@@ -57,10 +57,25 @@ Run the collector. It writes everything later stages read into one directory, so
 subagents read files instead of re-deriving the diff:
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/scripts/collect.py" --target "<target>" [--base <ref>]
+python3 "${CLAUDE_SKILL_DIR}/scripts/collect.py" --mode <mode> --target "<target>" [--base <ref>]
 ```
 
-It prints the package path (call it `$PKG`). Read `$PKG/summary.md` first. It
+It prints the package path (call it `$PKG`): the run folder
+`<repo>/.review-kit/runs/<date>-<mode>-<target>/`. Git ignores it (via `.git/info/exclude`)
+and it never appears in a reviewed diff. Everything the run produces goes in this folder,
+so a later session or another agent can pick the run up from disk.
+
+**Record progress** after each stage, so `/rk:resume` knows where to continue:
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scripts/state.py" "$PKG" <stage> [--note "<one line>"]
+```
+
+Stages: `packaged` (the collector records it), `contract`, `lenses`, `tests`, `verified`,
+`reported`. Right after packaging, store the original arguments:
+`state.py "$PKG" packaged --args "<the arguments you were given>"`.
+
+Read `$PKG/summary.md` first. It
 holds the stat, file list, commits, size verdict, and purpose-doc candidates. The
 full diff is `$PKG/diff.patch`; `$PKG/diff-numbered.txt` is the same diff with
 new-file line numbers, and every citation uses those numbers. In PR mode the PR body, review comments and
@@ -73,13 +88,12 @@ compared, and stop. If `meta.comment_context_status` is `partial` (PR comments c
 not be fully read, e.g. no GraphQL access), the code review still completes: report
 the existing-comment triage as incomplete and list the warnings under "Not checked". Do not reuse a nonempty `--out` package.
 
-For committed targets (commit/range/PR), `meta.repo_root` is a detached worktree at
-`meta.reviewed_commit`. Read source, contracts and tests from that root, not the
-original checkout. The user's checkout remains untouched. After using the
-package, remove its context with `git -C <original_repo_root> worktree remove
-<repo_root>` before deleting the package; do not delete a dirty worktree without
-reviewing its contents. Branch/uncommitted targets retain a live `working-tree`
-root: record the commit and rerun if the user changes it during review.
+**Read source from `meta.repo_root`**, never by assuming the current checkout:
+- `working-tree`: branch/uncommitted review of the live checkout. Rerun if the user changes it mid-review.
+- `checkout-at-reviewed-commit`: the checkout already sits, clean, at `meta.reviewed_commit`, so it is used directly.
+- `pinned-worktree`: a temporary detached worktree at `meta.reviewed_commit` under
+  `.git/review-kit/worktrees/`. The user's checkout is untouched. Marking the run `reported`
+  removes it, so don't remove it yourself and don't write into it.
 If the size verdict is `too-large` (over ~1000 changed lines), say so, and suggest
 reviewing by directory group (agent-skills change sizing). Continue only if the
 user agrees or the run is non-interactive.
@@ -132,7 +146,7 @@ different Claude model. Always say which one ran or why it didn't. Never skip si
 with `scripts/detect_tests.py`, ask before running (unless `--run`), run, and
 save output to `$PKG/test-results.md`. UI live checks hand off to the user's
 Playwright CLI skill. Backend live checks propose starting the server and a
-throwaway probe script outside the repo.
+throwaway probe script in `$PKG/probes/`.
 
 ### 5. Verify every candidate
 
@@ -194,9 +208,16 @@ ship after fixes / don't ship yet), what the change was checked against, and wha
 verification evidence exists. Findings cut by the cap are listed one line each
 under "Not reported" so nothing verified is lost.
 
-- `--html`: write `$PKG/explainer.json` per `references/html-explainer.md`, then
+Save the final report text to `$PKG/report.md` (exactly what you show the user) and end
+the report with the run folder path. Then mark the run done, which also removes a
+temporary source worktree:
+`python3 "${CLAUDE_SKILL_DIR}/scripts/state.py" "$PKG" reported`.
+Do this after the HTML and any posting below.
+
+- `--html`, or `HTML explainer: always` in `summary.md`: write `$PKG/explainer.json` per
+  `references/html-explainer.md`, then
   run `python3 "${CLAUDE_SKILL_DIR}/scripts/render_html.py" "$PKG"` and give the
-  user the printed path.
+  user the printed path. `HTML explainer: never` wins even over `--html`; say so.
 - `pr` mode with `--post`: follow the posting steps in `references/pr.md`. Show
   the exact comments first and get a yes before anything is posted.
 
@@ -217,4 +238,22 @@ report evidence (superpowers verification-before-completion).
 - **Say what you did not check.** Lenses that didn't run, tests not run, requirements
   that can't be verified from the diff (⚠️) all appear in the report.
 - **Read-only.** Reviews never edit files, move HEAD or change the index. Test runs
-  and probe scripts write only outside the repo or to build/test output folders.
+  and probe scripts write only to the run folder, a disposable copy, or build/test output folders.
+
+## Resuming a run
+
+`/rk:resume` (or "continue the last review") picks up an interrupted run, including one
+started by another session or agent:
+
+1. `python3 "${CLAUDE_SKILL_DIR}/scripts/state.py" --list .` lists runs, newest first, with
+   their original args, the stages done and the next stage. Use the run the user names, else
+   the newest one that isn't complete. If the newest is complete, show its `report.md` and
+   ask whether to start a new run instead.
+2. Read `state.json` (mode and args), `meta.json`, `summary.md`, and `contract.md` if present.
+   If `meta.source_kind` is `pinned-worktree` and `meta.repo_root` no longer exists, re-run
+   the collector with the same args and continue in the new run.
+3. Continue from `next`. Reuse what is on disk: a lens whose `candidates/<lens>.json` exists
+   doesn't run again; a valid `findings.json` means verification is done. For a
+   `working-tree` run, if `git rev-parse HEAD` no longer matches `meta.reviewed_commit` or the
+   diff changed, say so and offer a fresh run instead.
+4. Keep recording stages, and finish exactly as section 7 says.

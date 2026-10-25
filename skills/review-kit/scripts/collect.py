@@ -6,7 +6,9 @@ Resolves the review target (branch, range, commit, PR, path), writes the diff wi
 instruction files into one directory, and prints that directory's path on the last
 line of output.
 
-Usage: collect.py [--target T] [--base REF] [--out DIR]
+Usage: collect.py [--mode M] [--target T] [--base REF] [--out DIR]
+
+By default the package is a new run folder: <repo>/.review-kit/runs/<stamp>-<mode>-<target>/.
 """
 import argparse
 import datetime as _dt
@@ -15,7 +17,7 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
+import shutil
 from pathlib import Path
 
 CONTEXT = "-U10"
@@ -64,11 +66,24 @@ def empty_tree(root):
                input_text="", check=True).stdout.strip()
 
 
-def snapshot(root, head, pkg):
-    """Keep the caller's HEAD/index/files intact and pin all context reads."""
-    dest = pkg / "source"
+def snapshot(root, head, name):
+    """Pin context reads to `head` without touching the caller's HEAD, index or files.
+
+    Returns (source_root, source_kind). When the checkout already sits at `head` with no
+    tracked changes, it is the reviewed revision, so no copy is made. Otherwise a detached
+    worktree is created under the git dir (never inside the working tree, so test runners,
+    compilers and searches in the user's repo don't pick it up). It is removed when the run
+    is reported (state.py) or by the next run's cleanup.
+    """
+    clean = not out("status", "--porcelain", "--untracked-files=no", "--", ".", EXCLUDE, cwd=root)
+    if commit_ref(root, "HEAD") == head and clean:
+        return root, "checkout-at-reviewed-commit"
+    dest = worktree_home(root) / name
+    if dest.exists():
+        dest = Path(f"{dest}-{_dt.datetime.now().strftime('%H%M%S%f')}")
+    dest.parent.mkdir(parents=True, exist_ok=True)
     git("worktree", "add", "--detach", str(dest), head, cwd=root, check=True)
-    return str(dest)
+    return str(dest), "pinned-worktree"
 
 
 def no_index_diff(root, path):
@@ -90,7 +105,8 @@ def default_base(root):
 
 
 def untracked_diff(root, paths_filter=None):
-    files = out("ls-files", "--others", "--exclude-standard", cwd=root).splitlines()
+    files = [f for f in out("ls-files", "--others", "--exclude-standard", cwd=root).splitlines()
+             if not f.startswith(RK_DIR + "/")]
     if paths_filter:
         files = [f for f in files if any(f == p or f.startswith(p.rstrip("/") + "/") for p in paths_filter)]
     chunks = []
@@ -103,6 +119,135 @@ def untracked_diff(root, paths_filter=None):
             continue
         chunks.append(no_index_diff(root, f))
     return "".join(chunks), files
+
+
+RK_DIR = ".review-kit"
+EXCLUDE = f":(exclude){RK_DIR}"
+DEFAULT_CONFIG = {"html": "flag", "keep_runs": 50, "keep_source": False}
+FOLDER_README = """# .review-kit
+
+Created by the review-kit (rk) Claude Code plugin. Each review run gets a folder under `runs/`
+holding everything about that review: the diff, the purpose contract, lens candidates, verified
+findings, test results, the final report (`report.md`) and the HTML walkthrough (`review.html`).
+`state.json` records which stages finished, so `/rk:resume` (or any agent session) can pick up an
+interrupted run. `latest` names the most recent run.
+
+This folder is listed in `.git/info/exclude`, so it never shows up in `git status`, commits or
+reviewed diffs. To share reviews through git instead, remove that line and commit the folder.
+
+Reviews of a commit, range or PR that is not your current clean checkout read source from a
+temporary worktree under `.git/review-kit/worktrees/`. It is removed when the run finishes.
+
+Settings: `config.json` here (or `~/.review-kit/config.json` for all repos), for example
+`{"html": "always", "keep_runs": 50, "keep_source": false}`.
+- `html`: "always" | "flag" (only with --html, the default) | "never"
+- `keep_runs`: finished runs beyond this number are deleted, oldest first
+- `keep_source`: keep the temporary source worktree after a run finishes
+"""
+
+
+def load_config(root):
+    cfg = dict(DEFAULT_CONFIG)
+    for p in (Path.home() / RK_DIR / "config.json", Path(root) / RK_DIR / "config.json"):
+        try:
+            data = json.loads(p.read_text())
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict):
+            cfg.update(data)
+    return cfg
+
+
+def git_common_dir(root):
+    d = out("rev-parse", "--git-common-dir", cwd=root)
+    return (Path(d) if Path(d).is_absolute() else Path(root, d)).resolve()
+
+
+def worktree_home(root):
+    return git_common_dir(root) / "review-kit" / "worktrees"
+
+
+def ensure_excluded(root):
+    """Keep .review-kit out of git status and reviewed diffs without touching tracked files."""
+    ex = git_common_dir(root) / "info" / "exclude"
+    try:
+        ex.parent.mkdir(parents=True, exist_ok=True)
+        txt = ex.read_text() if ex.exists() else ""
+        if f"/{RK_DIR}/" not in txt.split():
+            ex.write_text(txt + ("\n" if txt and not txt.endswith("\n") else "") + f"/{RK_DIR}/\n")
+    except OSError:
+        pass
+
+
+def remove_source(meta_path, force=False):
+    """Remove a run's temporary worktree. Returns a short status string."""
+    try:
+        meta = json.loads(Path(meta_path).read_text())
+    except (OSError, ValueError):
+        return "no meta"
+    src = meta.get("repo_root")
+    if meta.get("source_kind") != "pinned-worktree" or meta.get("source_removed") or not src:
+        return "nothing to remove"
+    home = worktree_home(meta.get("original_repo_root", src)).resolve()
+    if home not in Path(src).resolve().parents:
+        return "refused: worktree is not under .git/review-kit/worktrees"
+    args = ["worktree", "remove", *(["--force"] if force else []), src]
+    r = git(*args, cwd=meta["original_repo_root"])
+    if r.returncode and Path(src).exists():
+        return f"kept: {r.stderr.strip() or 'git worktree remove failed'}"
+    git("worktree", "prune", cwd=meta["original_repo_root"])
+    meta["source_removed"] = True
+    Path(meta_path).write_text(json.dumps(meta, indent=2))
+    return "removed"
+
+
+def cleanup_runs(root, keep, current=None):
+    """Delete finished runs beyond `keep`; remove leftover worktrees of finished or stale runs."""
+    runs = Path(root, RK_DIR, "runs")
+    if not runs.is_dir():
+        return
+    finished, now = [], _dt.datetime.now().timestamp()
+    for d in sorted(p for p in runs.iterdir() if p.is_dir() and p != current):
+        try:
+            st = json.loads((d / "state.json").read_text())
+        except (OSError, ValueError):
+            st = {}
+        done = "reported" in st.get("stages_done", [])
+        if done:
+            finished.append(d)
+        stale = now - d.stat().st_mtime > 86400
+        if (d / "meta.json").exists() and (done or stale):
+            remove_source(d / "meta.json", force=True)
+    try:
+        keep = int(keep)
+    except (TypeError, ValueError):
+        return
+    for d in finished[:max(0, len(finished) - keep)]:
+        remove_source(d / "meta.json", force=True)
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def new_run_dir(root, stamp, mode, label, cfg):
+    base = Path(root, RK_DIR)
+    runs = base / "runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    ensure_excluded(root)
+    if not (base / "README.md").exists():
+        (base / "README.md").write_text(FOLDER_README)
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", label or "branch").strip("-").lower()[:40] or "branch"
+    name = f"{stamp}-{re.sub(r'[^a-z]+', '', mode.lower()) or 'review'}-{slug}"
+    pkg, n = runs / name, 1
+    while True:
+        try:
+            pkg.mkdir()
+            break
+        except FileExistsError:
+            n += 1
+            pkg = runs / f"{name}-{n}"
+    # Clean up after creating this run's folder, so a just-pruned name is never reused.
+    cleanup_runs(root, cfg.get("keep_runs", 50), current=pkg)
+    (base / "latest").write_text(str(pkg.relative_to(root)) + "\n")
+    return pkg
 
 
 def parse_pr_ref(target):
@@ -155,7 +300,7 @@ def collect_pr(root, num, repo_slug, pkg):
     if missing:
         git("fetch", "--quiet", "--no-tags", remote, *missing, cwd=root, check=True)
     base, head = commit_ref(root, base), commit_ref(root, head)
-    diff = git("diff", CONTEXT, f"{base}...{head}", cwd=root, check=True).stdout
+    diff = git("diff", CONTEXT, f"{base}...{head}", "--", ".", EXCLUDE, cwd=root, check=True).stdout
     # Inline anchors come from GitHub, and must describe the same head we pinned.
     a = ["pr", "diff", num] + (["--repo", repo_slug] if repo_slug else [])
     raw = run(["gh", *a], cwd=root, check=True).stdout
@@ -347,6 +492,7 @@ def main():
     ap.add_argument("--target", default="")
     ap.add_argument("--base", default="")
     ap.add_argument("--out", default="")
+    ap.add_argument("--mode", default="review")
     a = ap.parse_args()
 
     root = out("rev-parse", "--show-toplevel")
@@ -355,19 +501,18 @@ def main():
     target = (a.target or "").strip()
     repo_name = Path(root).name
     stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    cfg = load_config(root)
     if a.out:
         pkg = Path(a.out).resolve()
         if pkg.exists() and any(pkg.iterdir()):
             die("--out must be empty; refusing to reuse stale review artifacts")
         pkg.mkdir(parents=True, exist_ok=True)
     else:
-        base_dir = Path(tempfile.gettempdir(), "review-kit")
-        base_dir.mkdir(parents=True, exist_ok=True)
-        pkg = Path(tempfile.mkdtemp(prefix=f"{repo_name}-{stamp}-", dir=base_dir))
+        pkg = new_run_dir(root, stamp, a.mode, target or out("rev-parse", "--abbrev-ref", "HEAD", cwd=root), cfg)
     (pkg / "candidates").mkdir(exist_ok=True)
 
     meta = {"repo_root": root, "repo": repo_name, "target": target or "(current branch)",
-            "created": stamp, "kind": None}
+            "created": stamp, "kind": None, "mode": a.mode, "run_dir": str(pkg), "config": cfg}
     branch = out("rev-parse", "--abbrev-ref", "HEAD", cwd=root)
     pr_body = ""
     untracked = []
@@ -386,7 +531,7 @@ def main():
             die("invalid commit range")
         left, dots, right = parts
         base, head = commit_ref(root, left or "HEAD"), commit_ref(root, right or "HEAD")
-        diff = git("diff", CONTEXT, base + dots + head, cwd=root, check=True).stdout
+        diff = git("diff", CONTEXT, base + dots + head, "--", ".", EXCLUDE, cwd=root, check=True).stdout
         commits = git("log", "--oneline", "--no-decorate", f"{base}..{head}", cwd=root, check=True).stdout.strip()
         desc = f"range {target}"
         meta["kind"] = "range"
@@ -394,7 +539,7 @@ def main():
             and not Path(root, target).exists():
         head = commit_ref(root, target)
         base = out("rev-parse", "--verify", head + "^", cwd=root) or empty_tree(root)
-        diff = git("diff", CONTEXT, base, head, cwd=root, check=True).stdout
+        diff = git("diff", CONTEXT, base, head, "--", ".", EXCLUDE, cwd=root, check=True).stdout
         commits = git("log", "-1", "--oneline", "--no-decorate", head, cwd=root, check=True).stdout.strip()
         desc = f"commit {target}"
         meta["kind"] = "commit"
@@ -414,9 +559,7 @@ def main():
         mb = git("merge-base", base_ref, "HEAD", cwd=root, check=True).stdout.strip() if base_ref else ""
         if not mb:
             mb = out("rev-parse", "HEAD~1", cwd=root) or empty_tree(root)
-        args = ["diff", CONTEXT, mb]
-        if path_filter:
-            args += ["--", *path_filter]
+        args = ["diff", CONTEXT, mb, "--", *(path_filter or ["."]), EXCLUDE]
         diff = git(*args, cwd=root, check=True).stdout
         udiff, untracked = untracked_diff(root, path_filter)
         diff += udiff
@@ -447,14 +590,15 @@ def main():
     tests_changed = [f["path"] for f in files if re.search(r"(\.spec\.|\.test\.|_test\.|Tests?/|tests?/|\.Tests\b|Test\.cs$|Tests\.cs$)", f["path"])]
     original_root = root
     committed = meta["kind"] in ("pr", "range", "commit")
+    source_kind = "working-tree"
     if committed:
-        root = snapshot(root, head, pkg)
+        root, source_kind = snapshot(root, head, pkg.name)
     warnings = []
     if gh_info:
         warnings = json.loads((pkg / "pr-comments.json").read_text()).get("warnings", [])
     meta.update({"repo_root": root, "original_repo_root": original_root,
                  "reviewed_commit": head if committed else commit_ref(root, "HEAD"),
-                 "source_kind": "pinned-worktree" if committed else "working-tree",
+                 "source_kind": source_kind,
                  # Code context (diff, commits, pinned source) is complete at this point; failures
                  # there already aborted. Missing PR *comment* context only limits comment triage.
                  "collection_status": "completed",
@@ -493,6 +637,14 @@ def main():
         lines += ["", "## PR comment context incomplete (code review is unaffected; say so in the report)",
                   *[f"- {w}" for w in warnings]]
         (pkg / "summary.md").write_text("\n".join(lines) + "\n")
+    lines += ["", "## Run", f"- Run folder: {pkg}", f"- Mode: {a.mode}",
+              f"- Source read from: {root} ({source_kind})",
+              f"- HTML explainer: {cfg.get('html', 'flag')} (always = write it even without --html; never = skip even with --html)"]
+    (pkg / "summary.md").write_text("\n".join(lines) + "\n")
+    now = _dt.datetime.now().isoformat(timespec="seconds")
+    (pkg / "state.json").write_text(json.dumps({
+        "mode": a.mode, "target": meta["target"], "description": desc, "created": now, "updated": now,
+        "stages_done": ["packaged"], "next": "contract", "notes": []}, indent=2))
     if size == "empty":
         print(f"EMPTY: nothing to review for {desc}")
     print(str(pkg))

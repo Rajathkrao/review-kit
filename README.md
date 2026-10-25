@@ -66,6 +66,7 @@ Second-model review uses the Codex CLI if it is installed and logged in
 | `/rk:standards [target]` | Against coding standards and your CLAUDE.md, with concrete simplifications | 3–6 min |
 | `/rk:full [target]` | deep + spec + arch + standards, then offers tests | 10–20 min |
 | `/rk:review` | Asks which of the above to run | |
+| `/rk:resume [run]` | Continues an interrupted run, from this or any earlier session | |
 
 **Target**: nothing (current branch vs its base, plus uncommitted work), `main...feature`, a commit,
 a PR number or URL, or a path.
@@ -97,19 +98,56 @@ stated requirement cite it (`M2`).
 A fixed-format report: verdict, what it was checked against, verification evidence, findings with
 file:line, fix and confidence, spec compliance per requirement, existing PR comment verdicts, and
 what was dropped or not checked. With `--html`, a self-contained page that walks through the change
-step by step in execution order with each finding pinned to the step where it happens; saved to
-`~/.review-kit/reports/`.
+step by step in execution order with each finding pinned to the step where it happens; saved as `review.html`
+in the run folder.
 
 PR comments are posted only with `--post` and only after you approve the exact preview: one review,
 event COMMENT, inline comments on diff lines, everything else in the summary.
+
+## Where the files go
+
+Every run gets its own folder in the repo you're reviewing:
+
+```
+<repo>/.review-kit/
+  README.md          what this folder is
+  config.json        optional settings (see below)
+  latest             the most recent run
+  runs/
+    20261025-091200-deep-feature-invoice-export/
+      state.json       stages done + next stage (used by /rk:resume)
+      summary.md       target, files, commits, purpose-doc candidates
+      diff.patch, diff-numbered.txt
+      contract.md      the purpose the change was checked against
+      candidates/      what each lens raised
+      findings.json    verified findings + everything dropped and why
+      test-results.md  commands run and their output (when tests ran)
+      report.md        the final review, exactly as shown
+      review.html      the step-by-step walkthrough (with --html)
+```
+
+`.review-kit/` is added to `.git/info/exclude`, so it stays out of `git status`, commits and reviewed
+diffs, and no tracked file is changed. To share reviews through git, delete that line and commit the
+folder. Any agent session can read a run folder to pick up where another left off; `/rk:resume`
+does it for you.
+
+**Settings** go in `.review-kit/config.json` (this repo) or `~/.review-kit/config.json` (all repos):
+
+```json
+{ "html": "always", "keep_runs": 50, "keep_source": false }
+```
+
+- `html`: `"always"` writes the walkthrough on every run, `"flag"` (default) only with `--html`, `"never"` never.
+- `keep_runs`: finished runs beyond this number are deleted, oldest first (default 50).
+- `keep_source`: keep the temporary source copy after a run finishes (default `false`, see below).
 
 ## Tips
 
 - If superpowers or agent-skills are installed too, use the `/rk:*` commands directly. Their review
   skills answer to generic phrasings such as "review this", while `/rk:*` always runs review-kit.
 - Put your team's review rules in CLAUDE.md. The conventions lens enforces only rules that are written down.
-- Review packages live in your temp dir (`/tmp/review-kit/...`): diff, contract, candidates, findings,
-  test results. They're useful for auditing why something was or wasn't reported.
+- Each run folder (below) keeps the diff, contract, candidates, findings and test results. It's
+  useful for auditing why something was or wasn't reported.
 
 ## Tested
 
@@ -127,14 +165,18 @@ JSON requires these explicit states and evidence labels; see
 `skills/review-kit/references/verification.md` for the format and migration of
 older report packages. A missing test runtime is not a passing test.
 
-Historical commits/ranges and PRs use a separate detached worktree pinned to the
-reviewed commit for source/context/test reads. The original checkout is unchanged.
-Dependencies/submodules are not installed automatically; unavailable required
-checks must be disclosed. The package records `original_repo_root`, `repo_root`,
-`source_kind` and `reviewed_commit`. After inspection, clean up the pinned context
-with `git -C <original_repo_root> worktree remove <repo_root>` before deleting the
-package (normal Git protection rejects dirty worktrees). Branch reviews with
-uncommitted changes use live source and must be rerun if that source changes.
+Commits, ranges and PRs are reviewed against the exact reviewed commit, never your checkout:
+- If your checkout already sits, clean, at that commit (for example you checked out the PR
+  branch), it is used directly, so nothing is copied.
+- Otherwise a temporary detached worktree is created under `.git/review-kit/worktrees/`, outside
+  your working tree, so test runners, compilers and searches in your repo never see it. It is
+  removed when the run finishes, and leftovers from interrupted runs are cleaned up by the next
+  run after a day. Set `"keep_source": true` to keep it.
+
+Dependencies/submodules are not installed in the temporary copy; unavailable required checks must
+be disclosed. The run records `original_repo_root`, `repo_root`, `source_kind` and
+`reviewed_commit`. Branch reviews with uncommitted changes use live source and must be rerun if
+that source changes.
 
 `evals/run_case.sh` rejects failed setup/reviewer runs and existing run names;
 use a fresh run name for every evaluation. Its `status.json` records execution

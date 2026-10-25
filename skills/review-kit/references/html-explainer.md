@@ -66,7 +66,7 @@ Rules:
 python3 "${CLAUDE_SKILL_DIR}/scripts/render_html.py" "$PKG"
 ```
 
-The page is written to `$PKG/review.html` and copied to `~/.review-kit/reports/<repo>-<date>-<mode>.html`.
+The page is written to `$PKG/review.html`, in the run folder `<repo>/.review-kit/runs/<date>-<mode>-<target>/`.
 It contains: summary and verdict, a vertical flow diagram of the steps with finding badges,
 each step expanded with snippet and plain explanation, findings with fix and evidence, spec
 compliance, test evidence, key concepts, try-it-yourself checks, changed files, and (collapsed)

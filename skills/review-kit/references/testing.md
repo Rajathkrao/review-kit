@@ -69,7 +69,7 @@ If no Playwright skill is available, say so and list the manual steps.
 
 **Backend change** (endpoints, handlers, jobs, data access): propose, then ask:
 - the command to start the service locally (`dotnet run --project …`, `npm run start:api`, …)
-- a throwaway probe script written to `$PKG/probes/` (never inside the repo): curl calls or a
+- a throwaway probe script written to `$PKG/probes/` (the run folder; git ignores it): curl calls or a
   small script that hits the changed endpoint with the happy path plus the edge cases the
   lenses raised (empty, boundary, other tenant's id, retry of the same request)
 - the expected result for each probe, so the output can be judged without guessing

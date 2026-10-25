@@ -2,14 +2,13 @@
 """Render the review-kit HTML explainer from a review package.
 
 Reads PKG/explainer.json (optional), PKG/findings.json, PKG/meta.json,
-PKG/contract.md and PKG/test-results.md; writes PKG/review.html and a copy under
-~/.review-kit/reports/. Self-contained: no network, no external assets.
+PKG/contract.md and PKG/test-results.md; writes PKG/review.html in the run folder.
+Self-contained: no network, no external assets.
 """
 import datetime as _dt
 import html
 import json
 import re
-import shutil
 import sys
 from pathlib import Path
 from review_data import load_object, validate_review
@@ -269,12 +268,7 @@ footer {{ margin-top:48px; font-size:.82rem; color:var(--muted) }}
 </main></body></html>'''
     out = pkg / "review.html"
     out.write_text(page)
-    reports = Path.home() / ".review-kit" / "reports"
-    reports.mkdir(parents=True, exist_ok=True)
-    mode = ex.get("mode") or fx.get("mode") or "review"
-    copy = reports / f"{meta.get('repo','repo')}-{_dt.datetime.now().strftime('%Y%m%d-%H%M')}-{mode}.html"
-    shutil.copy(out, copy)
-    print(copy)
+    print(out)
 
 
 if __name__ == "__main__":
