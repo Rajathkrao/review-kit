@@ -12,6 +12,7 @@ import re
 import shutil
 import sys
 from pathlib import Path
+from review_data import load_object, validate_review
 
 
 def load_json(p, default):
@@ -50,9 +51,11 @@ def para(s):
 
 
 def render(pkg: Path):
-    meta = load_json(pkg / "meta.json", {})
-    fx = load_json(pkg / "findings.json", {"findings": []})
-    ex = load_json(pkg / "explainer.json", {})
+    # Never leave a stale clean report at the package path after a failed rerender.
+    (pkg / "review.html").unlink(missing_ok=True)
+    meta = load_object(pkg / "meta.json")
+    fx = validate_review(load_object(pkg / "findings.json"), meta)
+    ex = load_object(pkg / "explainer.json", optional=True)
     contract = read(pkg / "contract.md")
     tests = read(pkg / "test-results.md")
 
@@ -60,7 +63,10 @@ def render(pkg: Path):
     for i, f in enumerate(findings, 1):
         f.setdefault("id", f"F{i}")
     by_id = {f["id"]: f for f in findings}
-    verdict_txt, verdict_cls = VERDICT.get(fx.get("verdict", ""), ("Review", "ok"))
+    status = fx["execution_status"]
+    verdict_txt, verdict_cls = VERDICT.get(fx.get("verdict", ""), ("Inconclusive", "imp"))
+    if status != "completed":
+        verdict_txt, verdict_cls = status.replace("-", " ").title(), "imp"
     title = ex.get("title") or meta.get("description", "Code review")
     counts = {k: sum(1 for f in findings if f.get("severity") == k) for k in SEV_ORDER}
 
@@ -117,7 +123,7 @@ def render(pkg: Path):
             f"confidence {f.get('confidence')}",
             ", ".join(f.get("lenses", [])) if f.get("lenses") else "",
             f"found by {f.get('found_by')}" if f.get("found_by") else "",
-            f"verified by {f.get('verified_by')}" if f.get("verified_by") else "",
+            f"evidence: {f['evidence_status']}",
             f"contract {f.get('contract_ref')}" if f.get("contract_ref") else ""] if x)
         finding_html.append(f'''
     <article class="finding sev-{e(f.get("severity"))}" id="{e(f["id"])}">
@@ -241,6 +247,7 @@ footer {{ margin-top:48px; font-size:.82rem; color:var(--muted) }}
   <h1>{e(title)}</h1>
   {f'<p class="summary">{inline_md(ex.get("one_liner"))}</p>' if ex.get("one_liner") else ''}
   <span class="verdict {verdict_cls}">{e(verdict_txt)}</span>
+  <p class="muted">Execution: {e(status)} · Reviewed commit: <code>{e(meta.get("reviewed_commit", "not recorded"))}</code> · Context: {e(meta.get("source_kind", "not recorded"))}</p>
   <p class="summary">{inline_md(fx.get("summary",""))}</p>
   <div class="stats">
     <span class="stat">{len(meta.get("files", []))} files · +{meta.get("added",0)}/−{meta.get("deleted",0)}</span>
@@ -250,7 +257,7 @@ footer {{ margin-top:48px; font-size:.82rem; color:var(--muted) }}
   {overview}
   {flow_section}
   <section><h2>Findings</h2>
-    {"".join(finding_html) or '<p>No issues found.</p>'}
+    {"".join(finding_html) or ('<p>No issues found.</p>' if status == 'completed' else '<p>No clean conclusion: review did not complete.</p>')}
   </section>
   {f'<section><h2>Checked against the purpose</h2><div class="table-wrap"><table><tr><th>Req</th><th>Status</th><th>Evidence</th></tr>{spec_rows}</table></div><details><summary>Contract used</summary><pre class="tests">{e(contract)}</pre></details></section>' if spec_rows or contract else ''}
   {f'<section><h2>Test evidence</h2><pre class="tests">{e(tests)}</pre></section>' if tests else '<section><h2>Test evidence</h2><p class="muted">No tests were run for this review.</p></section>'}
@@ -273,4 +280,7 @@ footer {{ margin-top:48px; font-size:.82rem; color:var(--muted) }}
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         sys.exit("usage: render_html.py PKG")
-    render(Path(sys.argv[1]))
+    try:
+        render(Path(sys.argv[1]))
+    except (ValueError, OSError, TypeError, KeyError) as exc:
+        sys.exit(f"HTML generation failed: {exc}")

@@ -118,3 +118,37 @@ one only visible from the ADR, with zero noise findings. On a clean change it re
 where the built-in `/code-review` reported six findings. Deep reviews cost about $0.40–1.00 and take
 1–2.5 minutes; quick reviews about $0.15 and 30 seconds. Re-run the suite with `evals/run_case.sh`
 and score with `evals/score.py`.
+
+## Reliable execution and evidence
+
+Reviews now distinguish `completed`, `partial`, `failed` and `nothing-to-review`.
+Only completed reviews can produce a clean verdict or be posted. Final finding
+JSON requires these explicit states and evidence labels; see
+`skills/review-kit/references/verification.md` for the format and migration of
+older report packages. A missing test runtime is not a passing test.
+
+Historical commits/ranges and PRs use a separate detached worktree pinned to the
+reviewed commit for source/context/test reads. The original checkout is unchanged.
+Dependencies/submodules are not installed automatically; unavailable required
+checks must be disclosed. The package records `original_repo_root`, `repo_root`,
+`source_kind` and `reviewed_commit`. After inspection, clean up the pinned context
+with `git -C <original_repo_root> worktree remove <repo_root>` before deleting the
+package (normal Git protection rejects dirty worktrees). Branch reviews with
+uncommitted changes use live source and must be rerun if that source changes.
+
+`evals/run_case.sh` rejects failed setup/reviewer runs and existing run names;
+use a fresh run name for every evaluation. Its `status.json` records execution
+outcome, and a report is emitted only for a successful nonempty Claude result.
+This validates execution, not semantic correctness: `evals/score.py` remains a
+rough keyword-based aid and must not be treated as an authoritative quality score.
+
+Run local regression checks without network/model credentials:
+
+```bash
+python -m unittest discover -s tests -v
+python -m pip install -r tests/requirements.txt  # development-only YAML validation
+python tests/check_frontmatter.py
+```
+
+Python/shell runtime helpers remain dependency-free. Tests use temporary
+repositories and fake CLIs, including PR posting; they do not publish reviews.

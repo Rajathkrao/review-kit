@@ -1,6 +1,6 @@
 ---
-description: Quick review: one pass over the diff, verified, at most 5 findings
-argument-hint: [target] [--html] [--focus "text"]
+description: "Quick review: one pass over the diff, verified, at most 5 findings"
+argument-hint: "[target] [--html] [--focus \"text\"]"
 ---
 
 Load the `rk:review-kit` skill with the Skill tool and run it in **quick** mode.

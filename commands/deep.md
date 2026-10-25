@@ -1,6 +1,6 @@
 ---
-description: Deep adversarial review: parallel lenses, every finding verified, optional second model
-argument-hint: [target] [--second-model] [--html] [--run] [--all] [--focus "text"]
+description: "Deep adversarial review: parallel lenses, every finding verified, optional second model"
+argument-hint: "[target] [--second-model] [--html] [--run] [--all] [--focus \"text\"]"
 ---
 
 Load the `rk:review-kit` skill with the Skill tool and run it in **deep** mode.

@@ -1,6 +1,6 @@
 ---
-description: Code review with review-kit. Pick a mode, or pass one first (quick, deep, spec, pr, test, arch, standards, full)
-argument-hint: [mode] [target] [--html] [--second-model] [--post] [--run] [--all] [--focus "text"]
+description: "Code review with review-kit. Pick a mode, or pass one first (quick, deep, spec, pr, test, arch, standards, full)"
+argument-hint: "[mode] [target] [--html] [--second-model] [--post] [--run] [--all] [--focus \"text\"]"
 ---
 
 Load the `rk:review-kit` skill with the Skill tool and run it.

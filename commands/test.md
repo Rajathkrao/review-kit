@@ -1,6 +1,6 @@
 ---
-description: Find and run the tests that cover this change (asks first), mutation-check them, optional live check
-argument-hint: [target] [--run]
+description: "Find and run the tests that cover this change (asks first), mutation-check them, optional live check"
+argument-hint: "[target] [--run]"
 ---
 
 Load the `rk:review-kit` skill with the Skill tool and run it in **test** mode.

@@ -8,6 +8,7 @@ the mode never produces it (e.g. no "Existing PR comments" outside pr mode).
 
 **Verdict: Don't ship yet** — <one terse line: the strongest reason, or "no material issues found">
 **Checked against:** <contract source, e.g. docs/adr/0007-export-limits.md> · <n> requirements: ✅ <met> ❌ <missing> ⚠️ <cannot verify>
+**Execution:** completed | partial | failed | nothing-to-review · reviewed commit: <SHA>
 **Verification:** <`npx jest src/export` → 14 passed, 1 failed> | tests not run (<why>)
 **Scope:** <n> files, +<a>/−<d> · lenses: <list> · second model: <codex | claude-opus | not used | unavailable: reason>
 
@@ -88,3 +89,11 @@ Found <n> issues (<c> critical, <i> important). Inline comments below.
 Replies to existing review threads go in the thread
 (`gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies`), not as top-level comments
 (superpowers receiving-code-review).
+
+Reports and HTML must display execution state and the reviewed commit/context.
+Only completed reviews may say "No issues found" or be submitted to a PR.
+For partial/failed/empty-scope runs, say the result is inconclusive and list the
+missing checks; never convert missing evidence into approval. Findings display
+`source-verified`, `test-reproduced`, or `unverified` labels. A test-reproduced
+finding includes its command, observed result and exit status. The final JSON
+contract and migration rules are in `verification.md`.

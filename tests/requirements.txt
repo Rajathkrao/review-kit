@@ -1,0 +1,2 @@
+# CI/development metadata check only; runtime helpers remain standard-library-only.
+PyYAML>=6.0,<7

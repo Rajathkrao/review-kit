@@ -1,6 +1,6 @@
 ---
-description: Everything: deep + spec + architecture + standards, then offer tests
-argument-hint: [target] [--second-model] [--html] [--run] [--post]
+description: "Everything: deep + spec + architecture + standards, then offer tests"
+argument-hint: "[target] [--second-model] [--html] [--run] [--post]"
 ---
 
 Load the `rk:review-kit` skill with the Skill tool and run it in **full** mode.
