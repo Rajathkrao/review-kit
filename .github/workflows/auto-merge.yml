@@ -1,6 +1,11 @@
 name: auto-merge
-# Turns on GitHub auto-merge for every PR. The PR still merges only when branch protection
-# is satisfied: the `validate` check passes and the code owner approves.
+# Turns on GitHub auto-merge for PRs, so an approved PR with a green `validate` check merges by
+# itself. Intended to run with branch protection on `main` (required `validate` check + Code Owner
+# review); GitHub then holds the PR until both are satisfied.
+#
+# Guard: if branch protection is missing, `gh pr merge --auto` would merge a "clean" PR immediately,
+# with no review and before CI finishes. So this job only acts when GitHub reports the PR as
+# BLOCKED (protection is holding it) or when it already has an approving review.
 # Uses pull_request_target so it works for forks; it never checks out or runs PR code.
 on:
   pull_request_target:
@@ -13,8 +18,22 @@ jobs:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
-      - run: gh pr merge --auto --squash "$PR" --repo "$REPO"
+      - name: Enable auto-merge only when protection or an approval gates the merge
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
+        run: |
+          # mergeStateStatus is UNKNOWN for a few seconds after a push; wait for GitHub to compute it.
+          for i in $(seq 1 12); do
+            read -r STATE DECISION < <(gh pr view "$PR" --repo "$REPO" --json mergeStateStatus,reviewDecision \
+              --jq '"\(.mergeStateStatus) \(.reviewDecision // "NONE")"')
+            [ "$STATE" != "UNKNOWN" ] && break
+            sleep 5
+          done
+          echo "mergeStateStatus=$STATE reviewDecision=$DECISION"
+          if [ "$STATE" = "BLOCKED" ] || [ "$DECISION" = "APPROVED" ]; then
+            gh pr merge --auto --squash "$PR" --repo "$REPO"
+          else
+            echo "::warning::Not enabling auto-merge: nothing requires review or CI on main (state $STATE, review $DECISION). Turn on branch protection for main."
+          fi
