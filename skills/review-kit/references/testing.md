@@ -47,11 +47,16 @@ introduced them.
 
 ## 3. Mutation check (test and full modes, only after a run is approved)
 
-Pick 1–3 conditions the change adds. For each: copy the file to `$PKG/mutation/`, invert the
-condition (drop a negation, swap `&&`/`||`, change `<` to `<=`), run the same targeted test,
-then restore the file from the copy and confirm `git diff` for that file matches the original.
-A mutation that stays green is an Important finding that names the missing test case. Always
-restore, even when the run fails or times out.
+Perform mutations only in a disposable external copy/worktree, never in the
+user's reviewed source. Pick 1–3 conditions, invert one at a time, and run the
+same focused test against that copy. Record whether the test killed each mutation;
+a surviving mutation supports a missing-test finding only after excluding an
+equivalent mutation or a test that never exercises the changed path. Preserve
+original reviewed source/index/HEAD and confirm its status did not change.
+
+Missing runtimes, failed setup and unexercised targets are not test results.
+Record the command and failure, mark requested but unavailable verification as
+partial/inconclusive, and do not label those findings test-reproduced.
 
 ## 4. Live checks
 

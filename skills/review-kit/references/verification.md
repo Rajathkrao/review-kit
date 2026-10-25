@@ -74,6 +74,7 @@ Judge the code on its merits.
 
 ```json
 {
+  "execution_status": "completed",
   "verdict": "dont-ship | ship-after-fixes | ship",
   "summary": "Terse ship/no-ship reasoning, not a neutral recap (Codex). Do not restate the verdict word itself.",
   "findings": [
@@ -91,6 +92,7 @@ Judge the code on its merits.
       "lenses": ["errors", "adversarial"],
       "found_by": "claude | codex | claude-<model>",
       "verified_by": "read | test",
+      "evidence_status": "source-verified | test-reproduced | unverified",
       "contract_ref": "M2",
       "suggestion": "optional: exact replacement for lines line_start..line_end, only when the fix is that small"
     }
@@ -107,3 +109,32 @@ Verdict: `dont-ship` if any Critical survives; `ship-after-fixes` if any Importa
 
 Keep every dropped candidate in `dropped` with its reason. The report shows only the count, but
 `--all` and the HTML explainer use them, and they make the drop decisions auditable.
+
+## Execution and evidence contract
+
+The runtime validator is `scripts/review_data.py`. Required top-level fields are
+`execution_status`, `verdict`, nonempty `summary`, and `findings` (an array).
+`completed` means the selected review stages and required checks actually ran.
+Use `partial` when required context, review stages, a requested test runtime, or a
+second-model run is unavailable. Use `failed` for a failed review and
+`nothing-to-review` only for a successfully collected empty diff. All three
+non-completed states require `verdict: inconclusive`; failed/empty-scope reviews
+have no findings. Never report them as `ship` or "No issues found".
+
+Each finding requires `evidence_status` independently of impact/confidence:
+- `source-verified`: reread the exact target source and traced the triggering path.
+- `test-reproduced`: a focused execution reproduced the actual claimed behavior.
+  Include `test_evidence` with `command`, numeric `exit_code`, `observed`,
+  `setup_succeeded: true`, and `target_exercised: true`. A passing general suite,
+  a setup error, or a proposed test is not reproduction evidence.
+- `unverified`: a hypothesis remains unsettled. Keep in dropped/declined records;
+  if it must be shown in final findings, the review is partial/inconclusive.
+
+Keep `evidence` nonempty for every finding. Existing `verified_by` is retained
+for compatibility, but does not replace the explicit evidence label. Confidence
+is the reviewer's judgment, not a calibrated probability. Never infer successful
+execution merely from a label. Preserve actual commands/output in test-results.md.
+Completed verdicts follow the existing severity/confidence filtering rule. Older
+findings files lacking the new fields must be revalidated and annotated before
+HTML generation/posting; helpers fail with an actionable error rather than infer
+a successful review.

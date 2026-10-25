@@ -1,10 +1,16 @@
 ---
 name: review-kit
-description: Purpose-aware code review engine with modes quick, deep (adversarial), spec, pr, test, arch, standards and full. Use when the user runs any /rk: command or asks for a review-kit review of a diff, branch, commit range, path or GitHub pull request. Checks the change against its stated purpose (ADR, spec, plan, PR description), verifies every finding before reporting, and reports only what survives.
-argument-hint: <mode> [target] [--html] [--second-model] [--post] [--run] [--all] [--base <ref>] [--focus "<text>"]
+description: >-
+  Purpose-aware code review engine with modes quick, deep (adversarial), spec, pr, test, arch, standards and full. Use when the user invokes $review-kit or runs any /rk: command or asks for a review-kit review of a diff, branch, commit range, path or GitHub pull request. Checks the change against its stated purpose (ADR, spec, plan, PR description), verifies every finding before reporting, and reports only what survives.
 ---
 
 # review-kit
+
+## Codex invocation
+
+When running in Codex, read `references/codex.md` before the pipeline. Invoke as
+`$review-kit <mode> [target] [flags]`; Claude Code keeps its `/rk:*` commands.
+Use the same review criteria, candidates, verifier, filters and report format.
 
 A review is only useful if every line in it is worth the author's time. This skill
 finds candidate issues with focused lenses, then tries to **disprove** each one
@@ -60,7 +66,20 @@ full diff is `$PKG/diff.patch`; `$PKG/diff-numbered.txt` is the same diff with
 new-file line numbers, and every citation uses those numbers. In PR mode the PR body, review comments and
 reviews are in `$PKG/pr.json` and `$PKG/pr-comments.json`.
 
-If the collector reports an empty diff, say what it compared against and stop.
+If collection fails, stop with `execution_status: failed`; never interpret the failure
+as an empty diff. If collection succeeds with an empty diff, report
+`execution_status: nothing-to-review`, `verdict: inconclusive`, say what was
+compared, and stop. If `meta.comment_context_status` is `partial` (PR comments could
+not be fully read, e.g. no GraphQL access), the code review still completes: report
+the existing-comment triage as incomplete and list the warnings under "Not checked". Do not reuse a nonempty `--out` package.
+
+For committed targets (commit/range/PR), `meta.repo_root` is a detached worktree at
+`meta.reviewed_commit`. Read source, contracts and tests from that root, not the
+original checkout. The user's checkout remains untouched. After using the
+package, remove its context with `git -C <original_repo_root> worktree remove
+<repo_root>` before deleting the package; do not delete a dirty worktree without
+reviewing its contents. Branch/uncommitted targets retain a live `working-tree`
+root: record the commit and rerun if the user changes it during review.
 If the size verdict is `too-large` (over ~1000 changed lines), say so, and suggest
 reviewing by directory group (agent-skills change sizing). Continue only if the
 user agrees or the run is non-interactive.
@@ -144,6 +163,7 @@ From `$PKG/findings.json`:
 
 ### 7. Report
 
+Validate `findings.json` with `scripts/review_data.py` (the HTML/posting helpers do this automatically).
 Read `references/output-format.md` and write the report in exactly that format,
 in every mode including quick. It always starts with a one-line verdict (ship /
 ship after fixes / don't ship yet), what the change was checked against, and what

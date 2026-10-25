@@ -15,23 +15,26 @@ jobs:
       - name: JSON manifests parse
         run: |
           for f in .claude-plugin/*.json skills/review-kit/assets/*.json evals/answer-keys.json; do
-            python -c "import json,sys; json.load(open(sys.argv[1]))" "$f" && echo "ok $f"
+            python -c "import json,sys; json.load(open(sys.argv[1]))" "$f"
+            echo "ok $f"
           done
       - name: Scripts compile
         run: |
           python -m py_compile skills/review-kit/scripts/*.py evals/score.py
-          bash -n skills/review-kit/scripts/codex_review.sh evals/run_case.sh
-      - name: Frontmatter present
+          bash -n skills/review-kit/scripts/codex_review.sh
+          bash -n evals/run_case.sh
+      - name: Regression tests and metadata validation
         run: |
-          for f in skills/*/SKILL.md agents/*.md commands/*.md; do
-            head -1 "$f" | grep -qx -- '---' || { echo "missing frontmatter: $f"; exit 1; }
-          done
+          python -m pip install -r tests/requirements.txt
+          python tests/check_frontmatter.py
+          python -m unittest discover -s tests -v
       - name: Collector and test detector run on fixtures
         run: |
           mkdir -p /tmp/fx && tar xzf evals/fixtures.tgz -C /tmp/fx
           cd /tmp/fx/ts-invoices && git checkout -q feature/invoice-export
           P=$(python "$GITHUB_WORKSPACE/skills/review-kit/scripts/collect.py" | tail -1)
-          test -s "$P/diff-numbered.txt" && grep -q "0007-invoice-csv-export" "$P/summary.md"
+          test -s "$P/diff-numbered.txt"
+          grep -q "0007-invoice-csv-export" "$P/summary.md"
           python "$GITHUB_WORKSPACE/skills/review-kit/scripts/detect_tests.py" "$P" > /dev/null
           cd /tmp/fx/cs-orders && git checkout -q feature/cancel-order
           P=$(python "$GITHUB_WORKSPACE/skills/review-kit/scripts/collect.py" | tail -1)

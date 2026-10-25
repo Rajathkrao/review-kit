@@ -13,6 +13,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from review_data import load_object, validate_review
 
 SEV = {"critical": "Critical", "important": "Important", "minor": "Minor"}
 
@@ -58,8 +59,7 @@ def finding_body(f):
     if f.get("suggestion"):
         parts += ["", "```suggestion", f["suggestion"].rstrip("\n"), "```"]
     bits = [f"confidence {f.get('confidence')}"]
-    if f.get("verified_by"):
-        bits.append(f"verified by {f['verified_by']}")
+    bits.append(f"evidence: {f['evidence_status']}")
     if f.get("found_by") and f["found_by"] != "claude":
         bits.append(f"found by {f['found_by']}")
     parts += ["", f"<sub>review-kit · {' · '.join(bits)}</sub>"]
@@ -67,11 +67,15 @@ def finding_body(f):
 
 
 def build(pkg: Path):
-    meta = json.loads((pkg / "meta.json").read_text())
-    fx = json.loads((pkg / "findings.json").read_text())
+    meta = load_object(pkg / "meta.json")
+    fx = validate_review(load_object(pkg / "findings.json"), meta)
+    if fx["execution_status"] != "completed":
+        raise ValueError("Only completed reviews can be posted")
     pr = json.loads((pkg / "pr.json").read_text())
     gh = meta.get("github") or {}
     head = pr["headRefOid"]
+    if meta.get("reviewed_commit", head) != head:
+        raise ValueError("Reviewed commit does not match the PR payload")
     diff = (pkg / "pr-github.diff").read_text() if (pkg / "pr-github.diff").exists() else (pkg / "diff.patch").read_text()
     cl = commentable_lines(diff)
     owner, repo, num = gh.get("owner"), gh.get("repo"), gh.get("pr")
@@ -150,6 +154,24 @@ def gh_api(args, input_obj=None):
     return json.loads(p.stdout or "{}")
 
 
+def check_eligible(owner, repo, num, head):
+    try:
+        result = subprocess.run(
+            ["gh", "pr", "view", str(num), "--repo", f"{owner}/{repo}",
+             "--json", "headRefOid,state"], capture_output=True, text=True, timeout=30)
+        if result.returncode:
+            raise ValueError(f"PR eligibility lookup failed: {result.stderr.strip()}")
+        pr = json.loads(result.stdout)
+        if not isinstance(pr, dict) or not all(pr.get(k) for k in ("headRefOid", "state")):
+            raise ValueError("PR eligibility response lacks head/state")
+        if pr["headRefOid"] != head:
+            raise ValueError("PR head moved since review; re-run before posting")
+        if pr["state"] != "OPEN":
+            raise ValueError(f"PR is {pr['state']}; not posting")
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError(f"Cannot verify PR eligibility: {exc}") from exc
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("pkg")
@@ -161,6 +183,7 @@ def main():
     payload, (owner, repo, num, head) = build(pkg)
 
     if a.reply:
+        check_eligible(owner, repo, num, head)
         if not a.body_file:
             sys.exit("--reply needs --body-file")
         body = Path(a.body_file).read_text()
@@ -171,15 +194,13 @@ def main():
         print((pkg / "review-preview.md").read_text())
         print(f"\n[payload: {pkg/'review-payload.json'} · {len(payload['comments'])} inline comments · not posted]")
         return
-    pr = json.loads(subprocess.run(["gh", "pr", "view", str(num), "--repo", f"{owner}/{repo}", "--json", "headRefOid,state"],
-                                   capture_output=True, text=True).stdout or "{}")
-    if pr.get("headRefOid") and pr["headRefOid"] != head:
-        sys.exit(f"PR head moved from {head[:10]} to {pr['headRefOid'][:10]} since the review. Re-run the review before posting.")
-    if pr.get("state") and pr["state"] != "OPEN":
-        sys.exit(f"PR is {pr['state']}; not posting.")
+    check_eligible(owner, repo, num, head)
     r = gh_api(["-X", "POST", f"repos/{owner}/{repo}/pulls/{num}/reviews"], payload)
     print(r.get("html_url", "review posted"))
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (ValueError, OSError, KeyError, TypeError) as exc:
+        sys.exit(f"Review posting failed: {exc}")

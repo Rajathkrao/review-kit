@@ -2,11 +2,15 @@
 # Run an independent adversarial review with the Codex CLI, read-only.
 # Usage: codex_review.sh PKG [FOCUS]
 # Exit codes: 0 ok, 3 codex unavailable, 4 codex run failed.
-set -uo pipefail
+set -euo pipefail
+trap 'echo "codex-failed: incomplete review run" >&2; exit 4' ERR
 PKG="${1:?usage: codex_review.sh PKG [FOCUS]}"
 FOCUS="${2:-none}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ASSETS="$HERE/../assets"
+mkdir -p "$PKG/candidates"
+rm -f "$PKG/candidates/second-model.json" "$PKG/codex-output.json"
+echo '{"execution_status":"failed","reason":"Second-model run has not completed"}' > "$PKG/second-model-status.json"
 
 if ! command -v codex >/dev/null 2>&1; then
   echo "codex-unavailable: codex CLI not on PATH" >&2; exit 3
@@ -47,19 +51,19 @@ run_codex() {
   codex exec --sandbox read-only --skip-git-repo-check -C "$ROOT" "$@" -o "$OUT" - < "$PKG/codex-prompt.md" >"$LOG" 2>&1
 }
 if ! run_codex --output-schema "$ASSETS/codex-review-schema.json"; then
-  if grep -qiE "unexpected argument|unknown option|output-schema" "$LOG"; then
+  if grep -qiE "(unexpected argument|unknown option|unrecognized argument).*--output-schema" "$LOG"; then
     run_codex || { echo "codex-failed: see $LOG" >&2; exit 4; }
   else
     echo "codex-failed: see $LOG" >&2; exit 4
   fi
 fi
 
-python3 - "$OUT" "$PKG/candidates/second-model.json" <<'PY'
+python3 - "$OUT" "$PKG/candidates/second-model.json" "$HERE" <<'PY'
 import json, re, sys, pathlib
-src, dst = sys.argv[1:3]
-raw = pathlib.Path(src).read_text().strip()
-m = re.search(r"\{.*\}", raw, re.S)
-data = json.loads(m.group(0)) if m else {"findings": []}
+src, dst, here = sys.argv[1:4]
+sys.path.insert(0, here)
+from review_data import load_object, validate_codex
+data = validate_codex(load_object(src))
 sev = {"critical": "critical", "high": "important", "medium": "minor", "low": "minor"}
 cands = []
 for f in data.get("findings", []):
@@ -71,9 +75,12 @@ for f in data.get("findings", []):
         "body": f.get("body", ""), "evidence": "Reported by Codex (second model).",
         "recommendation": f.get("recommendation", ""),
         "confidence": int(round(c * 100)) if c <= 1 else int(c),
-        "found_by": "codex", "needs_test": False})
+        "found_by": "codex", "evidence_status": "unverified", "needs_test": False})
 out = {"lens": "second-model", "found_by": "codex", "verdict": data.get("verdict"),
-       "summary": data.get("summary", ""), "candidates": cands, "not_checked": []}
+       "summary": data.get("summary", ""), "execution_status": "completed",
+       "candidates": cands, "not_checked": []}
 pathlib.Path(dst).write_text(json.dumps(out, indent=2))
+pathlib.Path(dst).parent.parent.joinpath("second-model-status.json").write_text(
+    json.dumps({"execution_status": "completed"}))
 print(f"codex: {len(cands)} findings, verdict {data.get('verdict')}")
 PY
