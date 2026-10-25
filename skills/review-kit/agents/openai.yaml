@@ -2,8 +2,6 @@ interface:
   display_name: Review Kit
   short_description: Purpose-aware code review with verified findings
   default_prompt: Use $review-kit deep to review the current branch with an HTML walkthrough.
-  icon_small: assets/icon.svg
-  icon_large: assets/icon.svg
 policy:
   products:
   - chatgpt

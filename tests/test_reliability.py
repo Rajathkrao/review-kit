@@ -149,7 +149,7 @@ class CollectorTests(TemporaryCase):
             with self.assertRaises((RuntimeError,SystemExit)):
                 collect.collect_pr(str(self.repo),'1','owner/repo',self.pkg)
 
-    def test_pr_source_is_pinned_and_incomplete_context_is_partial(self):
+    def test_pr_source_is_pinned_and_incomplete_comment_context_is_flagged(self):
         (self.repo/'code.py').write_text('value = 2\n');git(self.repo,'commit','-am','PR change')
         head=git(self.repo,'rev-parse','HEAD')
         raw=git(self.repo,'diff',self.base,head)
@@ -175,7 +175,10 @@ print('[]')
                 r=self.collector('--target','https://github.com/owner/repo/pull/1')
                 self.assertEqual(r.returncode,0,r.stderr)
                 meta=json.loads((self.pkg/'meta.json').read_text())
-                self.assertEqual(meta['collection_status'],'partial' if fallback else 'completed')
+                # Missing comment context must not block a completed code review or posting.
+                self.assertEqual(meta['collection_status'],'completed')
+                self.assertEqual(meta['comment_context_status'],'partial' if fallback else 'completed')
+                self.assertEqual(bool(meta['collection_warnings']),bool(fallback))
                 self.assertEqual(meta['reviewed_commit'],head)
                 self.assertEqual((Path(meta['repo_root'])/'code.py').read_text(),'value = 2\n')
                 self.assertEqual((self.repo/'code.py').read_text(),'value = 3\n')

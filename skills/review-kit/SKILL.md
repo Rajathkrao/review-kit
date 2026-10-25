@@ -69,8 +69,9 @@ reviews are in `$PKG/pr.json` and `$PKG/pr-comments.json`.
 If collection fails, stop with `execution_status: failed`; never interpret the failure
 as an empty diff. If collection succeeds with an empty diff, report
 `execution_status: nothing-to-review`, `verdict: inconclusive`, say what was
-compared, and stop. For partial collection, preserve the warnings and never issue
-a clean verdict. Do not reuse a nonempty `--out` package.
+compared, and stop. If `meta.comment_context_status` is `partial` (PR comments could
+not be fully read, e.g. no GraphQL access), the code review still completes: report
+the existing-comment triage as incomplete and list the warnings under "Not checked". Do not reuse a nonempty `--out` package.
 
 For committed targets (commit/range/PR), `meta.repo_root` is a detached worktree at
 `meta.reviewed_commit`. Read source, contracts and tests from that root, not the

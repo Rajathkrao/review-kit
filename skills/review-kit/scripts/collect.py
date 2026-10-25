@@ -455,7 +455,10 @@ def main():
     meta.update({"repo_root": root, "original_repo_root": original_root,
                  "reviewed_commit": head if committed else commit_ref(root, "HEAD"),
                  "source_kind": "pinned-worktree" if committed else "working-tree",
-                 "collection_status": "partial" if warnings else "completed",
+                 # Code context (diff, commits, pinned source) is complete at this point; failures
+                 # there already aborted. Missing PR *comment* context only limits comment triage.
+                 "collection_status": "completed",
+                 "comment_context_status": ("partial" if warnings else "completed") if gh_info else "not-applicable",
                  "collection_warnings": warnings})
     cands = purpose_candidates(root, files, commits, pr_body, branch)
     instr = instruction_files(root, files)
@@ -487,7 +490,8 @@ def main():
     (pkg / "summary.md").write_text("\n".join(lines) + "\n")
 
     if warnings:
-        lines += ["", "## Collection incomplete", *[f"- {w}" for w in warnings]]
+        lines += ["", "## PR comment context incomplete (code review is unaffected; say so in the report)",
+                  *[f"- {w}" for w in warnings]]
         (pkg / "summary.md").write_text("\n".join(lines) + "\n")
     if size == "empty":
         print(f"EMPTY: nothing to review for {desc}")
