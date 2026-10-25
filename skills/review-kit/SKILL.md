@@ -143,6 +143,20 @@ with `$PKG`, the merged file, `references/verification.md`, and the test results
 path if tests ran. It re-reads the code for every candidate, tries to disprove it,
 scores it 0–100 with the rubric, sets severity, and writes `$PKG/findings.json`.
 
+**`$PKG/findings.json` is required in every mode and every outcome**, including zero
+candidates, `test` mode, and runs where you skip the verifier. It is always a JSON
+object in the shape defined in `references/verification.md`, never a bare list.
+When no candidate survives (or none was raised), write it yourself:
+
+```json
+{"execution_status": "completed", "verdict": "ship",
+ "summary": "<what was checked and why nothing material was found>",
+ "findings": [], "dropped": [], "not_checked": ["<anything not run>"]}
+```
+
+Every finding you keep needs `evidence` and `evidence_status` (`source-verified` after
+you reread the code, `test-reproduced` only with `test_evidence`).
+
 In `quick` mode, apply `references/verification.md` yourself, inline, before
 writing anything: open the file at each finding's location (Read), confirm the
 problem is there, and take the line numbers from the file, never from
@@ -163,7 +177,17 @@ From `$PKG/findings.json`:
 
 ### 7. Report
 
-Validate `findings.json` with `scripts/review_data.py` (the HTML/posting helpers do this automatically).
+Before writing the report, always run:
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scripts/review_data.py" "$PKG"
+```
+
+If it fails, fix `findings.json` so it truthfully describes the review (missing fields,
+wrong shape, a verdict that doesn't follow from the findings) and run it again. Never
+change the verdict or drop a finding just to make validation pass; if the review
+really is incomplete, mark it `partial` with verdict `inconclusive`. The report's
+verdict and **Execution** line must match the validated file.
 Read `references/output-format.md` and write the report in exactly that format,
 in every mode including quick. It always starts with a one-line verdict (ship /
 ship after fixes / don't ship yet), what the change was checked against, and what

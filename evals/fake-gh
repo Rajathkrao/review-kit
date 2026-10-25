@@ -4,7 +4,9 @@ import json, subprocess, sys, os
 a = sys.argv[1:]
 log = os.environ.get("FAKEGH_LOG", "/tmp/fakegh.log")
 open(log, "a").write(json.dumps(a) + "\n")
-def git(*x): return subprocess.run(["git", *x], capture_output=True, text=True).stdout.strip()
+# The PR lives in FAKEGH_REPO when set, so results don't depend on the caller's cwd.
+REPO_DIR = os.environ.get("FAKEGH_REPO")
+def git(*x): return subprocess.run(["git", *(["-C", REPO_DIR] if REPO_DIR else []), *x], capture_output=True, text=True).stdout.strip()
 head, base = git("rev-parse", "HEAD"), git("rev-parse", "main")
 if a[:2] == ["auth", "status"]: print("Logged in to github.com as rajath"); sys.exit(0)
 if a[:2] == ["pr", "view"]:
@@ -15,7 +17,7 @@ if a[:2] == ["pr", "view"]:
       "closingIssuesReferences": [], "labels": [], "reviewDecision": "",
       "files": [], "commits": [{"oid": head, "messageHeadline": "Add invoice CSV export endpoint (ADR-0007)"}]})); sys.exit(0)
 if a[:2] == ["pr", "diff"]:
-    print(subprocess.run(["git", "diff", f"{base}...{head}"], capture_output=True, text=True).stdout, end=""); sys.exit(0)
+    print(subprocess.run(["git", *(["-C", REPO_DIR] if REPO_DIR else []), "diff", f"{base}...{head}"], capture_output=True, text=True).stdout, end=""); sys.exit(0)
 if a[:2] == ["pr", "list"]: print("[]" if "--json" in a else ""); sys.exit(0)
 if a and a[0] == "api":
     rest = [x for x in a[1:]]

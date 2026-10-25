@@ -56,3 +56,43 @@ Fixtures:
   and records what gets posted. Submit and reply payloads were checked.
 - dotnet test execution (no .NET SDK in the test workspace). Test command detection for .NET was checked.
 - Large monorepo diffs. The collector warns above ~1000 changed lines and suggests splitting by area.
+
+# Re-test after PR #5 (2026-10-25)
+
+PR #5 made reviews fail closed (#1–#4). Follow-ups: #5 itself was patched so missing PR-comment
+context (no GraphQL) no longer blocks a completed review; PR #7 makes the skill always write and
+validate `findings.json`, which real-model runs showed was skipped on clean runs and in test mode.
+
+## Reliability: the 22 failure-scenario regression tests (`tests/test_reliability.py`)
+
+| Code | Result |
+|---|---|
+| Before #5 (158686b) | Mishandles nearly every scenario: bad ranges/bases and failed PR diffs became reviews, malformed findings and Codex prose rendered as "No issues found", posting continued after failed PR lookups (13/13 cases), historical reviews read the dirty checkout. Only the new validator's own checks pass (they didn't exist before). |
+| After #5 | 22/22 pass |
+
+## Detection (real headless Claude Code runs, same fixtures as v0.3)
+
+| Case | v0.3 (before) | After #5 + #7 |
+|---|---|---|
+| `/rk:deep --html`, TS export | 6/6, 0 noise | 6/6, 0 noise |
+| `/rk:deep`, C# cancel (held out) | 5/5, 0 noise | 5/5, 0 noise (×2) |
+| `/rk:spec`, C# | 5/5 | 5/5 |
+| `/rk:test --run`, TS | 5/6 | 6/6 |
+| `/rk:quick`, TS | 5 shown + 1 cut by cap | 5/6 |
+| `/rk:pr 42 --post --html` (simulated GitHub) | 6/6, posted after confirmation | 6/6, posted by itself, pinned to the reviewed commit |
+| `/rk:deep`, clean change | 0 findings | 0 findings |
+| `/rk:quick`, clean change | 0 findings | 0 findings |
+
+Detection quality is unchanged, as expected: #5 changed no review criteria.
+
+## Structured output validity (new in #5: `scripts/review_data.py`)
+
+| Case | After #5 only | After #5 + #7 |
+|---|---|---|
+| deep TS / C#, spec, quick TS, pr | valid | valid |
+| deep clean `--html` | no `findings.json` → HTML refused | valid, HTML rendered |
+| quick clean `--html` | `[]` (wrong shape) → HTML refused | valid, HTML rendered |
+| test `--run` | no `findings.json` | valid |
+
+Cost and time are unchanged: deep $0.38–0.92 / 47–140 s, quick $0.12–0.24 / 19–52 s.
+Single run per case; `evals/score.py` is a keyword aid, and every report above was also read by hand.
