@@ -250,8 +250,9 @@ started by another session or agent:
    the newest one that isn't complete. If the newest is complete, show its `report.md` and
    ask whether to start a new run instead.
 2. Read `state.json` (mode and args), `meta.json`, `summary.md`, and `contract.md` if present.
-   If `meta.source_kind` is `pinned-worktree` and `meta.repo_root` no longer exists, re-run
-   the collector with the same args and continue in the new run.
+   Run `python3 "${CLAUDE_SKILL_DIR}/scripts/state.py" --check-source "$PKG"` before
+   reusing any candidates or findings. If it fails (missing source, changed commit, or local
+   edits in committed context), start a fresh run; do not reuse the old results.
 3. Continue from `next`. Reuse what is on disk: a lens whose `candidates/<lens>.json` exists
    doesn't run again; a valid `findings.json` means verification is done. For a
    `working-tree` run, if `git rev-parse HEAD` no longer matches `meta.reviewed_commit` or the

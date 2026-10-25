@@ -66,16 +66,21 @@ def empty_tree(root):
                input_text="", check=True).stdout.strip()
 
 
+def source_clean(root):
+    return not git("status", "--porcelain", "--untracked-files=all", "--", ".", EXCLUDE,
+                   cwd=root, check=True).stdout.strip()
+
+
 def snapshot(root, head, name):
     """Pin context reads to `head` without touching the caller's HEAD, index or files.
 
     Returns (source_root, source_kind). When the checkout already sits at `head` with no
-    tracked changes, it is the reviewed revision, so no copy is made. Otherwise a detached
+    tracked or untracked changes, it is the reviewed revision, so no copy is made. Otherwise a detached
     worktree is created under the git dir (never inside the working tree, so test runners,
     compilers and searches in the user's repo don't pick it up). It is removed when the run
     is reported (state.py) or by the next run's cleanup.
     """
-    clean = not out("status", "--porcelain", "--untracked-files=no", "--", ".", EXCLUDE, cwd=root)
+    clean = source_clean(root)
     if commit_ref(root, "HEAD") == head and clean:
         return root, "checkout-at-reviewed-commit"
     dest = worktree_home(root) / name
@@ -141,8 +146,10 @@ temporary worktree under `.git/review-kit/worktrees/`. It is removed when the ru
 Settings: `config.json` here (or `~/.review-kit/config.json` for all repos), for example
 `{"html": "always", "keep_runs": 50, "keep_source": false}`.
 - `html`: "always" | "flag" (only with --html, the default) | "never"
-- `keep_runs`: finished runs beyond this number are deleted, oldest first
+- `keep_runs`: finished runs beyond this number are deleted, oldest first, except retained/dirty sources
 - `keep_source`: keep the temporary source worktree after a run finishes
+
+Automatic cleanup honors each run's saved keep_source setting and never force-deletes dirty sources.
 """
 
 
@@ -179,7 +186,7 @@ def ensure_excluded(root):
         pass
 
 
-def remove_source(meta_path, force=False):
+def remove_source(meta_path):
     """Remove a run's temporary worktree. Returns a short status string."""
     try:
         meta = json.loads(Path(meta_path).read_text())
@@ -188,10 +195,12 @@ def remove_source(meta_path, force=False):
     src = meta.get("repo_root")
     if meta.get("source_kind") != "pinned-worktree" or meta.get("source_removed") or not src:
         return "nothing to remove"
+    if (meta.get("config") or {}).get("keep_source"):
+        return "kept: keep_source is enabled"
     home = worktree_home(meta.get("original_repo_root", src)).resolve()
     if home not in Path(src).resolve().parents:
         return "refused: worktree is not under .git/review-kit/worktrees"
-    args = ["worktree", "remove", *(["--force"] if force else []), src]
+    args = ["worktree", "remove", src]
     r = git(*args, cwd=meta["original_repo_root"])
     if r.returncode and Path(src).exists():
         return f"kept: {r.stderr.strip() or 'git worktree remove failed'}"
@@ -215,16 +224,19 @@ def cleanup_runs(root, keep, current=None):
         done = "reported" in st.get("stages_done", [])
         if done:
             finished.append(d)
-        stale = now - d.stat().st_mtime > 86400
+        progress = d / "state.json"
+        last_activity = max(d.stat().st_mtime, progress.stat().st_mtime if progress.exists() else 0)
+        stale = now - last_activity > 86400
         if (d / "meta.json").exists() and (done or stale):
-            remove_source(d / "meta.json", force=True)
+            remove_source(d / "meta.json")
     try:
         keep = int(keep)
     except (TypeError, ValueError):
         return
     for d in finished[:max(0, len(finished) - keep)]:
-        remove_source(d / "meta.json", force=True)
-        shutil.rmtree(d, ignore_errors=True)
+        result = remove_source(d / "meta.json")
+        if result in ("removed", "nothing to remove"):
+            shutil.rmtree(d, ignore_errors=True)
 
 
 def new_run_dir(root, stamp, mode, label, cfg):
