@@ -1,0 +1,26 @@
+review-kit
+Copyright (c) 2026 Rajath. Licensed under the MIT License (see LICENSE).
+
+This project includes material from third-party projects:
+
+1. openai/codex-plugin-cc (https://github.com/openai/codex-plugin-cc)
+   Licensed under the Apache License, Version 2.0.
+   - skills/review-kit/assets/codex-adversarial-prompt.md is adapted from
+     plugins/codex/prompts/adversarial-review.md (the word "Codex" was removed from the role line).
+   - skills/review-kit/assets/codex-review-schema.json is copied from
+     plugins/codex/schemas/review-output.schema.json without changes.
+
+2. anthropics/claude-plugins-official (https://github.com/anthropics/claude-plugins-official)
+   Licensed under the Apache License, Version 2.0.
+   - The confidence rubric in skills/review-kit/references/verification.md is quoted from
+     plugins/code-review/commands/code-review.md. Other review criteria are adapted from
+     plugins/pr-review-toolkit agents.
+
+3. addyosmani/agent-skills (https://github.com/addyosmani/agent-skills), MIT License,
+   Copyright (c) 2025 Addy Osmani. Review criteria adapted throughout the lens references.
+
+4. obra/superpowers (https://github.com/obra/superpowers), MIT License,
+   Copyright (c) 2025 Jesse Vincent. Review criteria adapted throughout the lens references.
+
+A copy of the Apache License 2.0 is available at https://www.apache.org/licenses/LICENSE-2.0.
+skills/review-kit/references/SOURCES.md maps each rule to its source.

@@ -1,0 +1,42 @@
+{
+  "ts-invoices:feature/invoice-export": {
+    "base": "main",
+    "must_find": [
+      {"id": "T1", "sev": "critical", "file": "src/routes.ts", "lines": [15, 18], "keys": ["tenant", "query", "idor", "isolation", "other tenant", "?tenant"], "desc": "tenantId taken from ?tenant= query param: cross-tenant export (ADR #1, CLAUDE.md)"},
+      {"id": "T2", "sev": "important", "file": "src/export.ts", "lines": [29, 29], "keys": ["archived"], "desc": "archived invoices not excluded (ADR #2)"},
+      {"id": "T3", "sev": "important", "file": "src/export.ts", "lines": [30, 31], "keys": [">=", "10,000", "10000", "exactly", "boundary", "off-by-one", "MAX_ROWS"], "desc": "exactly 10,000 rows rejected; ADR allows up to 10,000"},
+      {"id": "T4", "sev": "important", "file": "src/export.ts", "lines": [34, 39], "keys": ["empty", "swallow", "''", "silent", "catch"], "desc": "CSV failure returns empty string -> 200 empty file (ADR #6) + console.log"},
+      {"id": "T5", "sev": "important", "file": "src/export.ts", "lines": [17, 26], "keys": ["retry", "unbounded", "infinite", "forever", "hang", "attempt"], "desc": "unbounded audit retry hangs request while audit service is down"},
+      {"id": "T6", "sev": "important", "file": "test/invoices.test.ts", "lines": [13, 14], "keys": ["weaken", "assert.ok", "flaky", "length > 0", "assertion"], "desc": "pagination test assertion weakened to length > 0"}
+    ],
+    "nice_to_find": [
+      {"id": "T7", "file": "src/export.ts", "lines": [37, 37], "keys": ["console.log", "logger"], "desc": "console.log instead of logger.error (CLAUDE.md)"}
+    ],
+    "bait": [
+      {"id": "B1", "file": "src/format.ts", "keys": ["formatCurrency", "floor", "truncat", "round"], "desc": "pre-existing bug in untouched file"},
+      {"id": "B2", "file": "src/export.ts", "keys": ["synchronous", "background job", "async", "stream"], "desc": "sync CSV build is a documented ADR trade-off"},
+      {"id": "B3", "file": "src/routes.ts", "keys": ["naming", "`data`", "variable name"], "desc": "style: variable named data"}
+    ]
+  },
+  "ts-invoices:feature/invoice-search": {
+    "base": "main",
+    "must_find": [],
+    "nice_to_find": [],
+    "bait": [],
+    "clean": true
+  },
+  "cs-orders:feature/cancel-order": {
+    "base": "main",
+    "must_find": [
+      {"id": "C1", "sev": "critical", "file": "src/Orders.Api/Services/CancellationService.cs", "lines": [14, 15], "keys": ["pending", "invert", "paid"], "desc": "Pending orders blocked; ADR says Pending and Paid are cancellable"},
+      {"id": "C2", "sev": "critical", "file": "src/Orders.Api/Services/CancellationService.cs", "lines": [17, 20], "keys": ["refund", "twice", "double", "idempot", "exactly once", "before", "drift", "order"], "desc": "refund before status update; retries or update failure -> double refund / drift"},
+      {"id": "C3", "sev": "important", "file": "src/Orders.Api/Controllers/OrdersController.cs", "lines": [33, 36], "keys": ["catch", "exception", "swallow", "nocontent", "204"], "desc": "catch (Exception) returns 204: failures reported as success (CLAUDE.md)"},
+      {"id": "C4", "sev": "important", "file": "src/Orders.Api/Data/OrderWriter.cs", "lines": [15, 16], "keys": ["sql", "interpolat", "parameter", "string-built", "injection", "dapper"], "desc": "string-built SQL (CLAUDE.md forbids)"},
+      {"id": "C5", "sev": "important", "file": "src/Orders.Api/Services/CancellationService.cs", "lines": [14, 15], "keys": ["cancelled", "already", "409", "conflict"], "desc": "already-cancelled order is not rejected with 409 (ADR)"}
+    ],
+    "nice_to_find": [
+      {"id": "C6", "file": "src/Orders.Api/Data/OrderWriter.cs", "lines": [8, 16], "keys": ["cancellationtoken", "ct", "token"], "desc": "no CancellationToken on MarkCancelledAsync (CLAUDE.md)"}
+    ],
+    "bait": []
+  }
+}

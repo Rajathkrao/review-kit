@@ -1,0 +1,14 @@
+{
+  "name": "review-kit-marketplace",
+  "owner": {
+    "name": "Rajath",
+    "email": "rajathkrao@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "rk",
+      "source": "./",
+      "description": "Purpose-aware, verified, low-noise code review with quick, deep, spec, pr, test, arch, standards and full modes."
+    }
+  ]
+}
