@@ -39,8 +39,10 @@ def mark(pkg, stage, note=None, args=None):
     st = load(pkg)
     done = [s for s in st.get("stages_done", []) if s in STAGES and s != stage] + [stage]
     st["stages_done"] = sorted(done, key=STAGES.index)
-    remaining = [s for s in STAGES if s not in st["stages_done"]]
-    st["next"] = remaining[0] if remaining else None
+    # Stages can be skipped (e.g. `tests` in deep mode), so "next" follows the furthest stage
+    # reached; once `reported` is done the run is complete.
+    last = max(STAGES.index(s) for s in st["stages_done"])
+    st["next"] = STAGES[last + 1] if last + 1 < len(STAGES) else None
     st["updated"] = _dt.datetime.now().isoformat(timespec="seconds")
     if note:
         st.setdefault("notes", []).append(f"{stage}: {note}")

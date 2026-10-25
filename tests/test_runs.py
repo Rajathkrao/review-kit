@@ -85,6 +85,12 @@ class RunFolders(unittest.TestCase):
         st = json.loads((pkg / 'state.json').read_text())
         self.assertEqual(st['stages_done'], ['packaged', 'contract', 'lenses'])
         self.assertIn('contract: ADR-7', st['notes'])
+        # Skipping an optional stage (tests) must still leave a reported run complete.
+        self.state(pkg, 'verified')
+        self.assertEqual(json.loads((pkg / 'state.json').read_text())['next'], 'reported')
+        self.state(pkg, 'reported')
+        self.assertIsNone(json.loads((pkg / 'state.json').read_text())['next'])
+        self.assertIn('next=complete', self.state('--list', self.repo))
 
     def test_no_copy_when_checkout_is_already_the_reviewed_commit(self):
         pkg = self.collect('--target', self.second)

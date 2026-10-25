@@ -96,3 +96,18 @@ Detection quality is unchanged, as expected: #5 changed no review criteria.
 
 Cost and time are unchanged: deep $0.38–0.92 / 47–140 s, quick $0.12–0.24 / 19–52 s.
 Single run per case; `evals/score.py` is a keyword aid, and every report above was also read by hand.
+
+# Run folders, /rk:resume and cheap source pinning (2026-10-25)
+
+Real headless Claude Code runs with each run stored in `<repo>/.review-kit/runs/`:
+
+| Case | Detection | Result | Source | Repo after |
+|---|---|---|---|---|
+| `/rk:deep --html`, TS | 6/6, 0 noise | valid findings, report.md + review.html in run folder | live checkout | `git status` clean |
+| `/rk:deep`, C# | 5/5, 0 noise | valid, report.md in run folder | live checkout | clean |
+| `/rk:deep --html`, clean change | 0 findings | valid, HTML rendered | live checkout | clean |
+| `/rk:pr 42 --post --html` from a checkout on `main` (simulated GitHub) | 6/6 | posted 6 inline comments at the PR head | temporary worktree under `.git/review-kit/worktrees`, **removed** at the end | clean, no leftover worktree |
+| Session killed after the contract stage, then `/rk:resume` in a new session | 5/5 | same run folder finished, valid | live checkout | clean |
+| Run stopped after the lenses, then `/rk:resume` | 5/5 | reused all 6 lens files, ran only the verifier: **$0.28** vs ~$0.82 for a full run | live checkout | clean |
+
+Regression tests: 29/29 (`tests/test_reliability.py` + new `tests/test_runs.py`).
