@@ -138,7 +138,8 @@ does it for you.
 ```
 
 - `html`: `"always"` writes the walkthrough on every run, `"flag"` (default) only with `--html`, `"never"` never.
-- `keep_runs`: finished runs beyond this number are deleted, oldest first (default 50).
+- `keep_runs`: finished runs beyond this number are deleted, oldest first (default 50), except
+  runs with dirty source worktrees or `keep_source: true`; their source and metadata are preserved.
 - `keep_source`: keep the temporary source copy after a run finishes (default `false`, see below).
 
 ## Tips
@@ -167,11 +168,12 @@ older report packages. A missing test runtime is not a passing test.
 
 Commits, ranges and PRs are reviewed against the exact reviewed commit, never your checkout:
 - If your checkout already sits, clean, at that commit (for example you checked out the PR
-  branch), it is used directly, so nothing is copied.
+  branch), it is used directly, so nothing is copied. Non-ignored untracked files also require a copy.
 - Otherwise a temporary detached worktree is created under `.git/review-kit/worktrees/`, outside
   your working tree, so test runners, compilers and searches in your repo never see it. It is
   removed when the run finishes, and leftovers from interrupted runs are cleaned up by the next
-  run after a day. Set `"keep_source": true` to keep it.
+  run after a day without progress. Dirty copies are never force-deleted. Set `"keep_source": true`
+  to preserve a run's source and metadata during automatic cleanup too.
 
 Dependencies/submodules are not installed in the temporary copy; unavailable required checks must
 be disclosed. The run records `original_repo_root`, `repo_root`, `source_kind` and

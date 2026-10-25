@@ -5,6 +5,7 @@
   state.py --list [REPO_DIR]                                   list runs, newest first
   state.py --show PKG                                          print one run's state
   state.py --cleanup PKG                                       remove the run's temporary source worktree
+  state.py --check-source PKG                                  validate committed source before resuming
 
 Stages, in order: packaged, contract, lenses, tests, verified, reported.
 Marking `reported` also removes the run's temporary source worktree, unless the
@@ -17,9 +18,24 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from collect import remove_source  # noqa: E402
+from collect import remove_source, commit_ref, source_clean  # noqa: E402
 
 STAGES = ["packaged", "contract", "lenses", "tests", "verified", "reported"]
+
+
+def check_source(pkg):
+    """Reject reused committed context if its revision or visible files changed."""
+    try:
+        meta = json.loads((Path(pkg) / "meta.json").read_text())
+        if meta.get("source_kind") == "working-tree":
+            print("Live working tree: compare HEAD and diff with the saved run before resuming.")
+            return
+        root = meta["repo_root"]
+        if not Path(root).is_dir() or commit_ref(root, "HEAD") != meta["reviewed_commit"] or not source_clean(root):
+            raise ValueError("reviewed source is missing or changed")
+    except (OSError, ValueError, KeyError, RuntimeError) as exc:
+        sys.exit(f"Cannot reuse source: {exc}; start a fresh run before reusing results.")
+    print("Reviewed source is unchanged.")
 
 
 def load(pkg):
@@ -87,6 +103,8 @@ if __name__ == "__main__":
         print(json.dumps(load(a[1]), indent=2))
     elif a[0] == "--cleanup":
         print(remove_source(Path(a[1]) / "meta.json"))
+    elif a[0] == "--check-source":
+        check_source(a[1])
     elif len(a) >= 2:
         note = a[a.index("--note") + 1] if "--note" in a else None
         args = a[a.index("--args") + 1] if "--args" in a else None

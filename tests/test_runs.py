@@ -134,7 +134,7 @@ class RunFolders(unittest.TestCase):
 
     def test_cleanup_prunes_old_runs_and_stale_copies(self):
         (self.repo / '.review-kit').mkdir()
-        (self.repo / '.review-kit' / 'config.json').write_text('{"keep_runs": 1, "keep_source": true}')
+        (self.repo / '.review-kit' / 'config.json').write_text('{"keep_runs": 1}')
         finished = [self.collect('--target', self.first) for _ in range(2)]
         for pkg in finished:
             self.state(pkg, 'reported')
@@ -142,9 +142,10 @@ class RunFolders(unittest.TestCase):
         stale_src = Path(self.meta(stale)['repo_root'])
         old = time.time() - 2 * 86400
         os.utime(stale, (old, old))
+        os.utime(stale / 'state.json', (old, old))
         self.collect()  # next run cleans up
         self.assertFalse(finished[0].exists())
-        self.assertFalse(Path(self.meta(finished[1])['repo_root']).exists())
+        self.assertTrue(self.meta(finished[1])['source_removed'])
         self.assertTrue(stale.exists())  # unfinished runs are kept for /rk:resume
         self.assertFalse(stale_src.exists())
         self.assertNotIn('review-kit/worktrees', self.worktrees())
@@ -158,6 +159,74 @@ class RunFolders(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(Path(r.stdout.strip()), pkg / 'review.html')
         self.assertFalse((self.home / '.review-kit' / 'reports').exists())
+
+    def test_next_run_preserves_dirty_source_and_its_metadata(self):
+        (self.repo / '.review-kit').mkdir()
+        (self.repo / '.review-kit' / 'config.json').write_text('{"keep_runs": 0}')
+        pkg = self.collect('--target', self.first)
+        src = Path(self.meta(pkg)['repo_root'])
+        (src / 'code.py').write_text('valuable edit\n')
+        (src / 'notes.txt').write_text('valuable untracked file\n')
+        self.state(pkg, 'reported')
+        self.collect()
+        self.assertEqual((src / 'code.py').read_text(), 'valuable edit\n')
+        self.assertEqual((src / 'notes.txt').read_text(), 'valuable untracked file\n')
+        self.assertTrue((pkg / 'meta.json').exists())
+        self.assertFalse(self.meta(pkg).get('source_removed', False))
+
+    def test_next_run_honors_keep_source_even_past_retention(self):
+        (self.repo / '.review-kit').mkdir()
+        (self.repo / '.review-kit' / 'config.json').write_text('{"keep_source": true, "keep_runs": 0}')
+        pkg = self.collect('--target', self.first)
+        src = Path(self.meta(pkg)['repo_root'])
+        self.state(pkg, 'reported')
+        self.collect()
+        self.assertTrue(src.exists())
+        self.assertTrue((pkg / 'meta.json').exists())
+
+    def test_recent_progress_prevents_stale_source_cleanup(self):
+        pkg = self.collect('--target', self.first)
+        src = Path(self.meta(pkg)['repo_root'])
+        old = time.time() - 2 * 86400
+        os.utime(pkg, (old, old))
+        self.state(pkg, 'contract', '--note', 'active now')
+        self.collect()
+        self.assertTrue(src.exists())
+
+    def test_untracked_source_requires_isolation_for_committed_review(self):
+        (self.repo / 'CLAUDE.md').write_text('uncommitted instructions\n')
+        pkg = self.collect('--target', self.second)
+        meta = self.meta(pkg)
+        self.assertEqual(meta['source_kind'], 'pinned-worktree')
+        self.assertFalse((Path(meta['repo_root']) / 'CLAUDE.md').exists())
+        self.assertEqual((self.repo / 'CLAUDE.md').read_text(), 'uncommitted instructions\n')
+
+    def test_resume_checks_reused_checkout_before_reusing_results(self):
+        pkg = self.collect('--target', self.second)
+        self.state('--check-source', pkg)
+        for change in ('branch', 'tracked', 'untracked'):
+            with self.subTest(change=change):
+                if change == 'branch':
+                    git(self.repo, 'checkout', 'main')
+                elif change == 'tracked':
+                    (self.repo / 'code.py').write_text('changed after collection\n')
+                else:
+                    (self.repo / 'new.py').write_text('untracked = True\n')
+                r = subprocess.run([sys.executable, str(SCRIPTS / 'state.py'), '--check-source', str(pkg)],
+                                   env=self.env, text=True, capture_output=True)
+                self.assertNotEqual(r.returncode, 0)
+                self.assertIn('fresh run', r.stderr)
+                git(self.repo, 'checkout', 'feature')
+                git(self.repo, 'checkout', '--', 'code.py')
+
+    def test_resume_checks_pinned_source_and_missing_source(self):
+        pkg = self.collect('--target', self.first)
+        self.state('--check-source', pkg)
+        self.state(pkg, 'reported')
+        r = subprocess.run([sys.executable, str(SCRIPTS / 'state.py'), '--check-source', str(pkg)],
+                           env=self.env, text=True, capture_output=True)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('fresh run', r.stderr)
 
 
 if __name__ == '__main__':
