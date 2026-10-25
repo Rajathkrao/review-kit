@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+"""Fake gh for offline PR-mode tests. Serves PR 42 from the current repo (main...HEAD)."""
+import json, subprocess, sys, os
+a = sys.argv[1:]
+log = os.environ.get("FAKEGH_LOG", "/tmp/fakegh.log")
+open(log, "a").write(json.dumps(a) + "\n")
+def git(*x): return subprocess.run(["git", *x], capture_output=True, text=True).stdout.strip()
+head, base = git("rev-parse", "HEAD"), git("rev-parse", "main")
+if a[:2] == ["auth", "status"]: print("Logged in to github.com as rajath"); sys.exit(0)
+if a[:2] == ["pr", "view"]:
+    print(json.dumps({"number": 42, "title": "Add invoice CSV export", "state": "OPEN", "isDraft": False,
+      "author": {"login": "dev1"}, "baseRefName": "main", "headRefName": "feature/invoice-export",
+      "headRefOid": head, "baseRefOid": base, "url": "https://github.com/acme/invoices/pull/42",
+      "body": "Implements ADR-0007 invoice CSV export.\n\n- New GET /invoices/export\n- Audit record per export\n- Fixed a flaky pagination test\n\nAll tests pass.",
+      "closingIssuesReferences": [], "labels": [], "reviewDecision": "",
+      "files": [], "commits": [{"oid": head, "messageHeadline": "Add invoice CSV export endpoint (ADR-0007)"}]})); sys.exit(0)
+if a[:2] == ["pr", "diff"]:
+    print(subprocess.run(["git", "diff", f"{base}...{head}"], capture_output=True, text=True).stdout, end=""); sys.exit(0)
+if a[:2] == ["pr", "list"]: print("[]" if "--json" in a else ""); sys.exit(0)
+if a and a[0] == "api":
+    rest = [x for x in a[1:]]
+    if "graphql" in rest:
+        print(json.dumps({"data": {"repository": {"pullRequest": {
+          "reviewThreads": {"nodes": [
+            {"isResolved": False, "isOutdated": False, "path": "src/export.ts", "line": 29, "comments": {"nodes": [
+              {"databaseId": 9001, "body": "For performance, skip scopedQuery here and filter the global invoice list by tenantId directly, it avoids the extra copy.", "author": {"login": "perf-pete"}, "createdAt": "2026-10-20T10:00:00Z", "path": "src/export.ts", "line": 29, "originalLine": 29}]}},
+            {"isResolved": False, "isOutdated": False, "path": "src/export.ts", "line": 13, "comments": {"nodes": [
+              {"databaseId": 9002, "body": "Customer names can contain commas (e.g. 'Acme, Inc.'). These need quoting or the columns shift.", "author": {"login": "alice"}, "createdAt": "2026-10-20T11:00:00Z", "path": "src/export.ts", "line": 13, "originalLine": 13}]}},
+            {"isResolved": True, "isOutdated": False, "path": "src/routes.ts", "line": 14, "comments": {"nodes": [
+              {"databaseId": 9003, "body": "nit: rename MONTH to MONTH_PATTERN", "author": {"login": "bob"}, "createdAt": "2026-10-20T12:00:00Z", "path": "src/routes.ts", "line": 14, "originalLine": 14}]}}]},
+          "reviews": {"nodes": [{"databaseId": 7001, "state": "COMMENTED", "body": "Looks good overall, a couple of comments.", "author": {"login": "alice"}, "submittedAt": "2026-10-20T11:05:00Z"}]}}}}})); sys.exit(0)
+    if any("/reviews" in x for x in rest) and "POST" in rest:
+        payload = sys.stdin.read(); open(os.environ.get("FAKEGH_POST", "/tmp/fakegh-post.json"), "w").write(payload)
+        print(json.dumps({"id": 555, "html_url": "https://github.com/acme/invoices/pull/42#pullrequestreview-555"})); sys.exit(0)
+    if any("/replies" in x for x in rest):
+        open(os.environ.get("FAKEGH_POST", "/tmp/fakegh-post.json") + ".reply", "a").write(sys.stdin.read() + "\n")
+        print(json.dumps({"html_url": "https://github.com/acme/invoices/pull/42#discussion_r1"})); sys.exit(0)
+    print("[]"); sys.exit(0)
+print(f"fake gh: unsupported {a}", file=sys.stderr); sys.exit(1)
