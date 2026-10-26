@@ -8,7 +8,14 @@ HERE="$(cd "$(dirname "$0")" && pwd)"; PLUGIN="$(dirname "$HERE")"
 [ "$#" -ge 4 ] || { echo 'usage: run_case.sh FIXTURE BRANCH RUN_NAME PROMPT' >&2; exit 2; }
 FIX=$1; BR=$2; NAME=$3; shift 3; PROMPT="$*"
 [[ "$FIX" =~ ^[a-zA-Z0-9_-]+$ && "$NAME" =~ ^[a-zA-Z0-9_-]+$ ]] || { echo 'invalid fixture/run name' >&2; exit 2; }
-[ -d "$HERE/fixtures" ] || { mkdir -p "$HERE/fixtures"; tar xzf "$HERE/fixtures.tgz" -C "$HERE/fixtures"; }
+if [ ! -d "$HERE/fixtures" ]; then
+  # Extract into a private folder and rename it into place, so parallel runs never see a
+  # half-extracted fixtures folder. If another run wins the rename, use its copy.
+  TMPFX=$(mktemp -d "$HERE/.fixtures.XXXXXX")
+  tar xzf "$HERE/fixtures.tgz" -C "$TMPFX"
+  # os.rename is atomic and refuses a non-empty target on Linux and macOS (mv -T is GNU-only).
+  python3 -c 'import os,sys; os.rename(sys.argv[1], sys.argv[2])' "$TMPFX" "$HERE/fixtures" 2>/dev/null || rm -rf "$TMPFX"
+fi
 OUT="$HERE/runs/$NAME"
 [ ! -e "$OUT" ] || { echo "run already exists: $OUT" >&2; exit 2; }
 mkdir -p "$OUT"

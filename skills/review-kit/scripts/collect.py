@@ -186,8 +186,12 @@ def ensure_excluded(root):
         pass
 
 
-def remove_source(meta_path):
-    """Remove a run's temporary worktree. Returns a short status string."""
+def remove_source(meta_path, honor_keep=True):
+    """Remove a run's temporary worktree. Returns a short status string.
+
+    Never forced: a worktree with local changes is kept. `honor_keep=False` is for an explicit
+    user request (state.py --cleanup) to remove a copy kept by `keep_source`.
+    """
     try:
         meta = json.loads(Path(meta_path).read_text())
     except (OSError, ValueError):
@@ -195,7 +199,7 @@ def remove_source(meta_path):
     src = meta.get("repo_root")
     if meta.get("source_kind") != "pinned-worktree" or meta.get("source_removed") or not src:
         return "nothing to remove"
-    if (meta.get("config") or {}).get("keep_source"):
+    if honor_keep and (meta.get("config") or {}).get("keep_source"):
         return "kept: keep_source is enabled"
     home = worktree_home(meta.get("original_repo_root", src)).resolve()
     if home not in Path(src).resolve().parents:

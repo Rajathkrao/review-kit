@@ -5,6 +5,7 @@
   state.py --list [REPO_DIR]                                   list runs, newest first
   state.py --show PKG                                          print one run's state
   state.py --cleanup PKG                                       remove the run's temporary source worktree
+                                                               (even if keep_source kept it; never if it has local changes)
   state.py --check-source PKG                                  validate committed source before resuming
 
 Stages, in order: packaged, contract, lenses, tests, verified, reported.
@@ -102,7 +103,7 @@ if __name__ == "__main__":
     elif a[0] == "--show":
         print(json.dumps(load(a[1]), indent=2))
     elif a[0] == "--cleanup":
-        print(remove_source(Path(a[1]) / "meta.json"))
+        print(remove_source(Path(a[1]) / "meta.json", honor_keep=False))
     elif a[0] == "--check-source":
         check_source(a[1])
     elif len(a) >= 2:
