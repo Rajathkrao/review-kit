@@ -111,3 +111,28 @@ Real headless Claude Code runs with each run stored in `<repo>/.review-kit/runs/
 | Run stopped after the lenses, then `/rk:resume` | 5/5 | reused all 6 lens files, ran only the verifier: **$0.28** vs ~$0.82 for a full run | live checkout | clean |
 
 Regression tests: 29/29 (`tests/test_reliability.py` + new `tests/test_runs.py`).
+
+# Re-test after PR #13 (2026-10-25)
+
+PR #13 fixed #9–#12 (cleanup/retention of source copies, stale context on resume, untracked files).
+
+| Issue | Before #13 (2657eb4) | After #13 |
+|---|---|---|
+| #9 dirty source copy at next run's cleanup | force-deleted (local edits lost) | kept, with its run record |
+| #10 `keep_source` at a later run's cleanup | copy removed anyway | kept |
+| #11 resume after the checkout moved | no check: stale context reused | `state.py --check-source` rejects it |
+| #12 untracked file (e.g. a local `json.py`) at the reviewed commit | reviewed from the checkout, file visible | isolated copy |
+| clean checkout at the reviewed commit | no copy | still no copy |
+
+Real headless Claude Code sessions:
+
+| Case | Result |
+|---|---|
+| `/rk:resume`, committed review, checkout unchanged | ran `--check-source`, reused all 6 lens results, only the verifier ran: 5/5, $0.37 |
+| `/rk:resume` after switching the checkout to `main` | `--check-source` failed, so a fresh run started (full lenses, temporary copy at the reviewed commit, removed at the end): 5/5, checkout left on `main` |
+| `/rk:pr 42 --post --html` from a checkout on `main` | 6/6, posted 6 inline comments at the PR head, copy removed, no leftover worktree |
+| `/rk:deep --html`, C# | 5/5, 0 noise, valid findings, HTML in the run folder |
+
+Regression tests: 36/36. Follow-ups in this PR: `state.py --cleanup` can remove a copy kept by
+`keep_source` (still never a dirty one); `run_case.sh` extracts fixtures atomically, so parallel
+runs no longer race (8/8 parallel setups succeeded).

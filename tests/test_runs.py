@@ -132,6 +132,21 @@ class RunFolders(unittest.TestCase):
         self.assertIn('kept', out)
         self.assertTrue(src2.exists())
 
+    def test_explicit_cleanup_removes_a_kept_copy_but_never_a_dirty_one(self):
+        (self.repo / '.review-kit').mkdir(exist_ok=True)
+        (self.repo / '.review-kit' / 'config.json').write_text('{"keep_source": true}')
+        pkg = self.collect('--target', self.first)
+        src = Path(self.meta(pkg)['repo_root'])
+        self.state(pkg, 'reported')
+        self.assertTrue(src.exists())
+        self.assertIn('removed', self.state('--cleanup', pkg))
+        self.assertFalse(src.exists())
+        pkg2 = self.collect('--target', self.first)
+        src2 = Path(self.meta(pkg2)['repo_root'])
+        (src2 / 'code.py').write_text('local edit\n')
+        self.assertIn('kept', self.state('--cleanup', pkg2))
+        self.assertEqual((src2 / 'code.py').read_text(), 'local edit\n')
+
     def test_cleanup_prunes_old_runs_and_stale_copies(self):
         (self.repo / '.review-kit').mkdir()
         (self.repo / '.review-kit' / 'config.json').write_text('{"keep_runs": 1}')
