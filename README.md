@@ -48,7 +48,7 @@ Second-model review uses the Codex CLI if it is installed and logged in
 
 ```
 /rk:quick                 # fast review of your current branch + uncommitted changes
-/rk:deep --html           # full adversarial review + step-by-step HTML walkthrough
+/rk:deep                  # full adversarial review + step-by-step HTML walkthrough
 /rk:spec                  # review against the ADR / spec / plan for this change
 /rk:pr 1234 --post        # review a GitHub PR, judge its comments, post after you approve
 ```
@@ -71,7 +71,7 @@ Second-model review uses the Codex CLI if it is installed and logged in
 **Target**: nothing (current branch vs its base, plus uncommitted work), `main...feature`, a commit,
 a PR number or URL, or a path.
 
-**Flags** (any mode): `--html` step-by-step explainer page · `--second-model` independent review by
+**Flags** (any mode): `--html` / `--no-html` the step-by-step walkthrough page (on by default in deep, full, pr, arch) · `--second-model` independent review by
 Codex or another Claude model · `--run` pre-approve running the proposed tests · `--all` also show
 lower-confidence and minor findings · `--focus "auth changes"` · `--base develop` · pr mode:
 `--post`, `--quick`.
@@ -97,8 +97,12 @@ stated requirement cite it (`M2`).
 
 A fixed-format report: verdict, what it was checked against, verification evidence, findings with
 file:line, fix and confidence, spec compliance per requirement, existing PR comment verdicts, and
-what was dropped or not checked. With `--html`, a self-contained page that walks through the change
-step by step in execution order with each finding pinned to the step where it happens; saved as `review.html`
+what was dropped or not checked.
+
+The walkthrough page (`review.html`, on by default in deep, full, pr and arch) shows your actual code
+in the order it runs, with each problem pinned as a margin note on the exact line. Every problem gets
+the sequence of events that triggers it, the root cause, the impact, a fix as a diff, and a test that
+fails today. It is self-contained, works offline, and supports light and dark mode; saved as `review.html`
 in the run folder.
 
 PR comments are posted only with `--post` and only after you approve the exact preview: one review,
@@ -123,7 +127,7 @@ Every run gets its own folder in the repo you're reviewing:
       findings.json    verified findings + everything dropped and why
       test-results.md  commands run and their output (when tests ran)
       report.md        the final review, exactly as shown
-      review.html      the step-by-step walkthrough (with --html)
+      review.html      the step-by-step walkthrough
 ```
 
 `.review-kit/` is added to `.git/info/exclude`, so it stays out of `git status`, commits and reviewed
@@ -134,10 +138,11 @@ does it for you.
 **Settings** go in `.review-kit/config.json` (this repo) or `~/.review-kit/config.json` (all repos):
 
 ```json
-{ "html": "always", "keep_runs": 50, "keep_source": false }
+{ "html": "auto", "keep_runs": 50, "keep_source": false }
 ```
 
-- `html`: `"always"` writes the walkthrough on every run, `"flag"` (default) only with `--html`, `"never"` never.
+- `html`: `"auto"` (default) writes the walkthrough in deep, full, pr and arch runs and otherwise only with
+  `--html`; `"always"` on every run; `"flag"` only with `--html`; `"never"` never.
 - `keep_runs`: finished runs beyond this number are deleted, oldest first (default 50), except
   runs with dirty source worktrees or `keep_source: true`; their source and metadata are preserved.
 - `keep_source`: keep the temporary source copy after a run finishes (default `false`, see below).

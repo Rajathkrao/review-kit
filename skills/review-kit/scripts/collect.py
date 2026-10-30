@@ -128,7 +128,8 @@ def untracked_diff(root, paths_filter=None):
 
 RK_DIR = ".review-kit"
 EXCLUDE = f":(exclude){RK_DIR}"
-DEFAULT_CONFIG = {"html": "flag", "keep_runs": 50, "keep_source": False}
+DEFAULT_CONFIG = {"html": "auto", "keep_runs": 50, "keep_source": False}
+HTML_MODES = ("deep", "full", "pr", "arch")
 FOLDER_README = """# .review-kit
 
 Created by the review-kit (rk) Claude Code plugin. Each review run gets a folder under `runs/`
@@ -145,12 +146,20 @@ temporary worktree under `.git/review-kit/worktrees/`. It is removed when the ru
 
 Settings: `config.json` here (or `~/.review-kit/config.json` for all repos), for example
 `{"html": "always", "keep_runs": 50, "keep_source": false}`.
-- `html`: "always" | "flag" (only with --html, the default) | "never"
+- `html`: "auto" (deep, full, pr and arch runs; others with --html; the default) | "always" | "flag" (only with --html) | "never"
 - `keep_runs`: finished runs beyond this number are deleted, oldest first, except retained/dirty sources
 - `keep_source`: keep the temporary source worktree after a run finishes
 
 Automatic cleanup honors each run's saved keep_source setting and never force-deletes dirty sources.
 """
+
+
+def html_decision(setting, mode):
+    if setting == "never":
+        return "no (config html=never; this wins even over --html)"
+    if setting == "always" or (setting == "auto" and mode in HTML_MODES):
+        return "yes (skip only if the user passed --no-html)"
+    return "only if the user passed --html"
 
 
 def load_config(root):
@@ -655,7 +664,7 @@ def main():
         (pkg / "summary.md").write_text("\n".join(lines) + "\n")
     lines += ["", "## Run", f"- Run folder: {pkg}", f"- Mode: {a.mode}",
               f"- Source read from: {root} ({source_kind})",
-              f"- HTML explainer: {cfg.get('html', 'flag')} (always = write it even without --html; never = skip even with --html)"]
+              f"- HTML walkthrough: {html_decision(cfg.get('html', 'auto'), a.mode)}"]
     (pkg / "summary.md").write_text("\n".join(lines) + "\n")
     now = _dt.datetime.now().isoformat(timespec="seconds")
     (pkg / "state.json").write_text(json.dumps({

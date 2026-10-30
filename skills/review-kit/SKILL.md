@@ -31,7 +31,7 @@ Parse `$ARGUMENTS` (or the text the command passed you) into:
 | target | empty (current branch + uncommitted), `A..B` / `A...B` range, commit sha, PR number / `#123` / PR URL, a path | current branch |
 | `--base <ref>` | base for branch review | upstream, else `main`/`master` |
 | `--focus "<text>"` | area to weight heavily | none |
-| `--html` | also write the HTML explainer | off |
+| `--html` / `--no-html` | write or skip the HTML walkthrough | on in deep, full, pr, arch; off otherwise |
 | `--second-model` | add an independent review by a different model | off |
 | `--post` | post the review to the PR (pr mode, after confirmation) | off |
 | `--run` | pre-approves running the proposed test commands | off (ask first) |
@@ -214,10 +214,11 @@ temporary source worktree:
 `python3 "${CLAUDE_SKILL_DIR}/scripts/state.py" "$PKG" reported`.
 Do this after the HTML and any posting below.
 
-- `--html`, or `HTML explainer: always` in `summary.md`: write `$PKG/explainer.json` per
-  `references/html-explainer.md`, then
-  run `python3 "${CLAUDE_SKILL_DIR}/scripts/render_html.py" "$PKG"` and give the
-  user the printed path. `HTML explainer: never` wins even over `--html`; say so.
+- **HTML walkthrough**: follow the `HTML walkthrough:` line in `summary.md` (it already applies
+  the mode and config); `--html` turns it on and `--no-html` off, except that config `never` wins.
+  When on, read `references/html-explainer.md`, write `$PKG/explainer.json` with a full
+  walkthrough and an in-depth entry for **every** reported finding, then run
+  `python3 "${CLAUDE_SKILL_DIR}/scripts/render_html.py" "$PKG"` and give the user the printed path.
 - `pr` mode with `--post`: follow the posting steps in `references/pr.md`. Show
   the exact comments first and get a yes before anything is posted.
 
