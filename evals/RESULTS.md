@@ -136,3 +136,37 @@ Real headless Claude Code sessions:
 Regression tests: 36/36. Follow-ups in this PR: `state.py --cleanup` can remove a copy kept by
 `keep_source` (still never a dirty one); `run_case.sh` extracts fixtures atomically, so parallel
 runs no longer race (8/8 parallel setups succeeded).
+
+# Walkthrough v2, scoring and completion gate (2026-10-29)
+
+Feedback: the HTML page was hard to read and shallow, and the plain Codex adversarial review felt
+stronger than `/rk:deep`. Two new fixtures: `ts-billing` (5 design-level bugs: overlapping workers,
+retry without an idempotency key, month-end overflow, failure after a charge marked past_due,
+cursor ties) and `ng-search` (Angular 18 search box: sanitizer bypass, mergeMap race, OnPush
+mutation, click-only results; bonus: no live region, one failed request kills the stream; noise
+trap: a "subscription leak" that isn't one). Adversarial baseline = the Codex plugin's prompt run
+verbatim through Claude Code with read-only tools (`evals/run_adversarial_baseline.sh`); there is no
+Codex login here, so this isolates the prompt from the model.
+
+| Fixture | Adversarial prompt | rk deep before #15 | rk deep after #15/#16 |
+|---|---|---|---|
+| ts-billing (5) | 5/5, 5/5 | 5/5, **4/5** (verifier dropped a real bug as "rare") | 5/5 in 7 of 7 runs |
+| ts-invoices (6, one only in the ADR) | 5/6 (missed the ADR one) | 6/6 | 6/6, 6/6 |
+| cs-orders (5) | 5/5 | 5/5 | 5/5, 5/5 |
+| ng-search (4 + 2 bonus) | 4/4 + 2, **reports the non-leak** (2 of 2) | n/a | 4/4 + 2, non-leak correctly dropped (3 of 3) |
+| clean change | 0 findings | 0 | 0 (4 runs) |
+| cost / time per review | ~$0.09 / ~20 s | ~$0.78 / ~2 min | ~$0.80 / ~2.3 min (incl. walkthrough) |
+
+Walkthrough depth per problem (median), real runs: root cause ~12 → ~50 words, impact ~10 → ~40,
+tests from one-line to 6–10 real lines. Every reported finding gets a sequence of events, a code
+trace, a fix diff and a test.
+
+Pipeline compliance: before the gate, 2 of 7 deep runs skipped steps (one skipped lenses,
+verifier and HTML on a "small diff"; one skipped the HTML). After it: 6 of 6 ran every lens and
+the walkthrough. One clean run hit an over-strict check (verifier output required with zero
+candidates) and used `--force`; fixed in this PR.
+
+Still open: rk deep costs ~8× the single adversarial pass for the same detection on these
+fixtures. Its extras are the spec check, the verifier dropping false positives, the walkthrough
+and PR posting. A quick mode that leads with the adversarial stance is in a draft PR, waiting on
+real-model runs (the account's usage limit stopped testing).
