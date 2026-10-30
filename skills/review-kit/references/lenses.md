@@ -41,7 +41,7 @@ Source: agent-skills five-axis (Performance), references/performance-checklist.
 - Unnecessary re-renders / change-detection churn in UI components.
 Report only with a concrete cost ("adds one query per row", not "could be slow").
 
-## adversarial  (deep, arch)
+## adversarial  (deep, arch, quick: leads the pass)
 Source: openai/codex-plugin-cc `prompts/adversarial-review.md` (stance and attack surface kept
 nearly verbatim), agent-skills doubt-driven-development (assumption checks).
 
@@ -140,7 +140,7 @@ listing findings. Only exploitable issues; give an exploitation scenario for Cri
 - New dependencies: from a trusted source, no known CVEs, no typosquats or install scripts.
 quick mode runs only the injection, authorization and secrets checks.
 
-## spec  (spec, deep when the contract has requirements, full, pr)
+## spec  (spec, deep and quick when the contract has requirements, full, pr)
 Source: superpowers task-reviewer-prompt (Part 1) and code-reviewer.md.
 Compare the diff against every numbered item in `contract.md`:
 - **Missing**: a requirement skipped, or claimed without being implemented.

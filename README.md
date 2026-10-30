@@ -57,7 +57,7 @@ Second-model review uses the Codex CLI if it is installed and logged in
 
 | Command | What it does | Typical time |
 |---|---|---|
-| `/rk:quick [target]` | One pass, verified, at most 5 findings | 1–3 min |
+| `/rk:quick [target]` | One adversarial pass checked against the change's purpose, verified, at most 7 findings. The everyday choice | ~1 min, ~$0.20 |
 | `/rk:deep [target]` | Adversarial + correctness + history + errors/tests + security lenses in parallel, then verification | 5–12 min |
 | `/rk:spec [target]` | Checks the change against its ADR / spec / plan, requirement by requirement | 3–6 min |
 | `/rk:pr <number\|url>` | Deep review of a GitHub PR, judges its existing comments, `--post` to publish | 6–14 min |
