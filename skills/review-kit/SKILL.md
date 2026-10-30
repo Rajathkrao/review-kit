@@ -115,7 +115,7 @@ your conclusions about whether the code meets it.
 
 | Mode | Lenses (see `references/lenses.md`) | How |
 |---|---|---|
-| quick | correctness, security-light, conventions, errors | Inline, one pass, no subagents |
+| quick | adversarial (lead), spec (if the contract has requirements), correctness, errors, security-light, conventions | Inline, one pass, no subagents |
 | deep | correctness+perf, adversarial, history+conventions, errors+tests, security, spec (if contract has requirements) | Parallel subagents |
 | spec | spec, correctness (requirement areas only) | Parallel subagents |
 | arch | architecture, adversarial (approach focus) | Parallel subagents |
@@ -171,7 +171,10 @@ When no candidate survives (or none was raised), write it yourself:
 Every finding you keep needs `evidence` and `evidence_status` (`source-verified` after
 you reread the code, `test-reproduced` only with `test_evidence`).
 
-In `quick` mode, apply `references/verification.md` yourself, inline, before
+In `quick` mode, review from the adversarial stance first: read the `adversarial` section of
+`references/lenses.md` and try to break the change (attack surface, failure paths, retries,
+concurrency, trust boundaries), then check each contract requirement, then the remaining quick
+lenses. Then apply `references/verification.md` yourself, inline, before
 writing anything: open the file at each finding's location (Read), confirm the
 problem is there, and take the line numbers from the file, never from
 `diff.patch`. Write `$PKG/findings.json` too, so `--html` and PR posting work
@@ -185,7 +188,7 @@ From `$PKG/findings.json`:
 - Order: Critical, then Important, then Minor. Within a level, correctness and security first.
 - Default report shows Critical and Important. Minor is shown in `standards` mode,
   or with `--all`. Otherwise give a one-line count of hidden minors.
-- Cap: 5 findings in quick, 10 otherwise. If more survive, keep the highest
+- Cap: 7 findings in quick, 10 otherwise. If more survive, keep the highest
   leverage ones and say how many were cut. One structural problem outranks ten nits.
 - Never pad. Zero findings is a valid, useful result: say "No issues found" and what was checked.
 

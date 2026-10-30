@@ -1,5 +1,5 @@
 ---
-description: "Quick review: one pass over the diff, verified, at most 5 findings"
+description: "Quick review: one adversarial pass checked against the change's purpose, verified, at most 7 findings"
 argument-hint: "[target] [--html] [--focus \"text\"]"
 ---
 
