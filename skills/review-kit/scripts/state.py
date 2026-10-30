@@ -50,7 +50,13 @@ def missing_for_report(pkg, st):
     if have < need:
         missing.append(f"lens results: {have} of at least {need} files in candidates/ ({mode} mode runs "
                        f"its lenses as rk:lens-reviewer subagents whatever the diff size)")
-    if need and fx.get("findings") is not None and not (pkg / "candidates-merged.json").exists():
+    raised = 0
+    for c in (pkg / "candidates").glob("*.json"):
+        try:
+            raised += len(json.loads(c.read_text()).get("candidates") or [])
+        except (OSError, ValueError, AttributeError):
+            pass
+    if need and raised and not (pkg / "candidates-merged.json").exists():
         missing.append("candidates-merged.json and the rk:finding-verifier pass")
     decision = html_decision((meta.get("config") or {}).get("html", "auto"), mode)
     wants_html = ("--html" in args.split() and not decision.startswith("no")) or \

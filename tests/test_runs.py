@@ -176,14 +176,17 @@ class RunFolders(unittest.TestCase):
         r = subprocess.run([sys.executable, str(SCRIPTS / 'state.py'), str(pkg), 'reported'],
                            cwd=self.repo, env=self.env, capture_output=True, text=True)
         self.assertNotEqual(r.returncode, 0)
-        for text in ('report.md', 'lens results: 0 of at least 4', 'rk:finding-verifier', 'review.html'):
+        for text in ('report.md', 'lens results: 0 of at least 4', 'review.html'):
             self.assertIn(text, r.stderr)
         self.assertNotIn('reported', json.loads((pkg / 'state.json').read_text())['stages_done'])
         (pkg / 'report.md').write_text('Report')
         for lens in ('a', 'b', 'c', 'd'):
-            (pkg / 'candidates' / f'{lens}.json').write_text('{"candidates": []}')
-        (pkg / 'candidates-merged.json').write_text('[]')
+            (pkg / 'candidates' / f'{lens}.json').write_text('{"candidates": [{"title": "x"}]}')
         (pkg / 'review.html').write_text('<html></html>')
+        r = subprocess.run([sys.executable, str(SCRIPTS / 'state.py'), str(pkg), 'reported'],
+                           cwd=self.repo, env=self.env, capture_output=True, text=True)
+        self.assertIn('rk:finding-verifier', r.stderr)  # candidates were raised, so they must be verified
+        (pkg / 'candidates-merged.json').write_text('[]')
         self.state(pkg, 'reported')
         self.assertIn('reported', json.loads((pkg / 'state.json').read_text())['stages_done'])
 
@@ -195,8 +198,7 @@ class RunFolders(unittest.TestCase):
         (pkg / 'report.md').write_text('Report')
         for lens in ('a', 'b', 'c', 'd'):
             (pkg / 'candidates' / f'{lens}.json').write_text('{}')
-        (pkg / 'candidates-merged.json').write_text('[]')
-        self.state(pkg, 'reported')  # no review.html needed
+        self.state(pkg, 'reported')  # no review.html needed; no candidates, so no verifier pass needed
         failed = self.collect()
         (failed / 'findings.json').write_text(json.dumps(dict(
             execution_status='failed', verdict='inconclusive', summary='Collection failed', findings=[])))

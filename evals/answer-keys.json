@@ -462,24 +462,6 @@
           "wcag"
         ],
         "desc": "clickable div: not keyboard accessible"
-      },
-      {
-        "id": "N5",
-        "sev": "important",
-        "file": "src/app/search/search-box.component.ts",
-        "lines": [
-          19,
-          26
-        ],
-        "keys": [
-          "unsubscribe",
-          "leak",
-          "takeuntil",
-          "destroyref",
-          "ngondestroy",
-          "takeuntildestroyed"
-        ],
-        "desc": "valueChanges subscription never torn down"
       }
     ],
     "nice_to_find": [
@@ -492,8 +474,33 @@
           "announce"
         ],
         "desc": "results not announced to screen readers"
+      },
+      {
+        "id": "N7",
+        "file": "src/app/search/search-box.component.ts",
+        "keys": [
+          "catcherror",
+          "kills",
+          "terminat",
+          "stops working",
+          "dies",
+          "error terminates",
+          "permanently"
+        ],
+        "desc": "a failed request errors the stream: search stops until reload (unplanted, found by review)"
       }
     ],
-    "bait": []
+    "bait": [
+      {
+        "id": "N5",
+        "file": "src/app/search/search-box.component.ts",
+        "keys": [
+          "unsubscribe",
+          "leak",
+          "takeuntil"
+        ],
+        "desc": "NOT a defect: the subscription is on the component's own FormControl and is collected with it; reporting it as a leak is noise"
+      }
+    ]
   }
 }
