@@ -170,3 +170,23 @@ Still open: rk deep costs ~8× the single adversarial pass for the same detectio
 fixtures. Its extras are the spec check, the verifier dropping false positives, the walkthrough
 and PR posting. A quick mode that leads with the adversarial stance is in a draft PR, waiting on
 real-model runs (the account's usage limit stopped testing).
+
+# Quick mode leads with the adversarial stance (2026-10-30)
+
+`/rk:quick` now runs one inline pass that starts from the Codex adversarial stance, checks each
+contract requirement, then the other quick lenses, verifies inline, and caps at 7 findings.
+Real headless Claude Code runs:
+
+| Fixture | `/rk:quick` | Codex adversarial prompt (via Claude) | `/rk:deep` |
+|---|---|---|---|
+| ts-billing (5 design-level bugs) | 5/5, 5/5 | 5/5, 5/5 | 5/5 (×7 runs after #15) |
+| ts-invoices (6, one only in the ADR) | **6/6** | 5/6 (missed the ADR-only bug) | 6/6 |
+| cs-orders (5) | 5/5 | 5/5 | 5/5 |
+| ng-search (4 + a debatable leak) | 4/4 | 4/4 | 4/4 |
+| clean change | 0, 0 | 0 | 0 |
+| cost / time | ~$0.21 / ~55 s | ~$0.10 / ~20 s | ~$0.80 / ~140 s |
+
+Takeaways: quick matches the plain adversarial review on detection and adds the purpose check
+(the ADR-only bug) at about twice its cost. Deep costs ~4× quick for the same detection on these
+fixtures; use it for the walkthrough page, PR posting, and high-stakes changes. The completion
+gate (#16): after it, 6/6 deep runs ran the full pipeline (before it, 2 of 7 skipped steps).
