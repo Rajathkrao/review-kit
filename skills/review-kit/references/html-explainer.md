@@ -83,10 +83,14 @@ Trace the change yourself: read the diff and the code it calls. Then write:
 
 ### Each problem, in depth (`problems`, keyed by the finding id in `findings.json`)
 
-Every finding in `findings.json` gets an entry. Depth here is the point of the page:
+Every finding in `findings.json` gets an entry. Depth here is the point of the page, so don't
+compress: this is where the reader learns why the code is wrong. Targets per problem:
+`summary` 2–4 sentences, `scenario` 4–7 events, `root_cause` 3–5 sentences, `impact` 2–4
+sentences with numbers where you have them, a `fix.patch` of real code, and a `test.code` of 5–25
+lines written with real line breaks (`\n` in the JSON string), never one long line.
 
 - `pin_line`: the line where the problem actually happens (the call without a key, the condition
-  that's inverted), not the first line of the function.
+  that's inverted), not the first line of the function. Open the file and check the number.
 - `scenario`: the concrete sequence that triggers it, as 3 to 7 ordered events with real values
   (ids, amounts, timestamps, inputs). Someone should be able to reproduce it from this list.
   `failure_step` is the 1-based step where the damage happens (default: the last).
@@ -108,5 +112,7 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/render_html.py" "$PKG"
 ```
 
 The page is written to `$PKG/review.html` in the run folder. The renderer validates
-`findings.json` first and refuses to render invalid data. Give the user the path. If the session
+`findings.json` first and refuses to render invalid data. It prints `thin: ...` lines for problems
+whose explanation is missing or too short: fix those entries in `explainer.json` and render once
+more. Don't loop beyond that. Give the user the path. If the session
 can open files (desktop app), offer to open it.

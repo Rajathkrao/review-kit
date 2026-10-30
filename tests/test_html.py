@@ -86,6 +86,15 @@ class Walkthrough(unittest.TestCase):
         html = self.render(dict(title='Gone', steps=[dict(title='S', file='pay.py', lines=[2, 3], explanation='E')]))
         self.assertIn('gateway.send(total)', html)
 
+    def test_thin_explanations_are_flagged(self):
+        (self.pkg / 'explainer.json').write_text(json.dumps(dict(
+            title='T', steps=[dict(title='S', file='pay.py', lines=[1, 2], explanation='E')],
+            problems={'F1': dict(scenario=['one'], root_cause='short', test=dict(code='x' * 150))})))
+        r = subprocess.run([sys.executable, str(SCRIPTS / 'render_html.py'), str(self.pkg)], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for text in ('F1: scenario has 1 steps', 'F1: root_cause is 1 words', 'F1: fix.patch missing', 'one 150-char line'):
+            self.assertIn(text, r.stderr)
+
     def test_no_explainer_still_explains_findings(self):
         html = self.render()
         self.assertIn('Problems, in depth', html)

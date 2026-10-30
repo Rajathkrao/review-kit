@@ -227,7 +227,7 @@ def patch_block(patch, title="Suggested fix"):
 def snippet_block(code, title):
     if not code:
         return ""
-    rows = "".join(f'<div class="pl"><code>{highlight(l)}</code></div>' for l in str(code).rstrip("\n").split("\n"))
+    rows = "".join(f'<div class="pl"><span class="mk"></span><code>{highlight(l)}</code></div>' for l in str(code).rstrip("\n").split("\n"))
     return (f'<figure class="code patch"><figcaption>{e(title)}<button type="button" class="copy" '
             f'data-copy="{e(code)}">Copy</button></figcaption><div class="src">{rows}</div></figure>')
 
@@ -317,13 +317,13 @@ figure.code figcaption .path{font:600 13px/1.4 var(--mono);color:var(--ink)}
 .pin-critical{color:var(--crit)}.pin-important{color:var(--imp)}.pin-minor{color:var(--min)}.pin-note{color:var(--accent)}
 .pin span,.pin{overflow-wrap:anywhere}
 a.pin:hover b{text-decoration:underline}
-.pl{display:grid;grid-template-columns:2em max-content;min-height:21px;padding-left:6px}
-.pl code{white-space:pre;padding-right:16px}
+.pl{display:grid;grid-template-columns:2em minmax(0,1fr);min-height:21px;padding-left:6px}
+.pl code{white-space:pre-wrap;overflow-wrap:anywhere;padding-right:16px}
 .pl .mk{text-align:center;font:600 13px/1.5 var(--mono)}
 .pl.pa{background:var(--add)}.pl.pa .mk{color:var(--add-mark)}
 .pl.pd{background:var(--del)}.pl.pd .mk{color:var(--crit)}
 .pl.ph code{color:var(--soft)}
-.pl.ph{grid-template-columns:max-content;padding-left:12px}
+.pl.ph{grid-template-columns:minmax(0,1fr);padding-left:12px}
 figure.patch .pl:not(.pa):not(.pd):not(.ph){padding-left:0}
 .copy{margin-left:auto;font:600 12px/1 var(--sans);color:var(--accent);background:transparent;border:1px solid var(--rule);border-radius:4px;padding:5px 9px;cursor:pointer}
 .copy:hover{background:var(--accent-wash)}
@@ -391,6 +391,39 @@ document.querySelectorAll('button.copy').forEach(function(b){
 """
 
 
+def words(s):
+    return len(str(s or "").split())
+
+
+def depth_warnings(findings, details, steps, src):
+    """Places where the explainer is too thin to teach the problem. Printed, never fatal."""
+    out = []
+    if findings and not steps:
+        out.append("no walkthrough steps")
+    for f in findings:
+        fid, d = f["id"], details.get(f["id"])
+        if not d:
+            out.append(f"{fid}: no entry in problems")
+            continue
+        if len(d.get("scenario") or []) < 3:
+            out.append(f"{fid}: scenario has {len(d.get('scenario') or [])} steps (aim for 4-7 with real values)")
+        for key, need in (("summary", 30), ("root_cause", 40), ("impact", 25)):
+            if words(d.get(key)) < need:
+                out.append(f"{fid}: {key} is {words(d.get(key))} words (aim for {need}+)")
+        if not (d.get("fix") or {}).get("patch"):
+            out.append(f"{fid}: fix.patch missing")
+        code = (d.get("test") or {}).get("code") or ""
+        if not code:
+            out.append(f"{fid}: test.code missing")
+        elif "\n" not in code.strip() and len(code) > 100:
+            out.append(f"{fid}: test.code is one {len(code)}-char line; use real newlines")
+        pin = d.get("pin_line")
+        lines = src.lines(f.get("file"))
+        if pin and lines and not 1 <= int(pin) <= len(lines):
+            out.append(f"{fid}: pin_line {pin} is outside {f.get('file')}")
+    return out
+
+
 def render(pkg: Path):
     # Never leave a stale clean report at the package path after a failed rerender.
     (pkg / "review.html").unlink(missing_ok=True)
@@ -427,7 +460,7 @@ def render(pkg: Path):
     counts = {k: sum(1 for f in findings if f.get("severity") == k) for k in SEV_ORDER}
     sev_text = ", ".join(f"{v} {k}" for k, v in counts.items() if v) or "none"
     contract_src = ""
-    m = re.search(r"^Source:\s*(.+)$", contract, re.M)
+    m = re.search(r"source:\s*`?([^\s`,;()]+)", contract, re.I)
     if m:
         contract_src = m.group(1).strip()
     tests_line = "not run"
@@ -677,6 +710,8 @@ def render(pkg: Path):
 </body></html>'''
     out = pkg / "review.html"
     out.write_text(page)
+    for w in depth_warnings(findings, details, steps, src):
+        print(f"thin: {w}", file=sys.stderr)
     print(out)
 
 
