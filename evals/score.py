@@ -11,7 +11,7 @@ key = json.loads(Path(__file__).with_name('answer-keys.json').read_text())[sys.a
 # Keep only the findings part: up to "Spec compliance" / "Not reported" / "Lower confidence"
 main = re.split(r"\n#+\s*(Spec compliance|Not reported|Lower confidence|Existing PR comments|What was not)", rep)[0]
 blocks = re.split(r"\n(?=\*\*\d+\.|\d+\.\s|#{2,4}\s*\d|\*\*[A-Z][a-z]+:\*\*|- \*\*(Critical|Important|Minor))", main)
-blocks = [b for b in blocks if b and re.search(r"[\w/]+\.(ts|cs|js|py)", b)]
+blocks = [b for b in blocks if b and re.search(r"[\w/.-]+\.(tsx?|jsx?|cs|py|html|cshtml|razor|go|java|scss|css|json|ya?ml)\b", b)]
 
 def hit(item, b):
     base = Path(item['file']).name.lower()

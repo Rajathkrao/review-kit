@@ -386,5 +386,121 @@
         "desc": "untouched pre-existing helper"
       }
     ]
+  },
+  "ng-search:feature/search-box": {
+    "base": "main",
+    "must_find": [
+      {
+        "id": "N1",
+        "sev": "critical",
+        "file": "src/app/search/search-box.component.ts",
+        "lines": [
+          28,
+          30
+        ],
+        "keys": [
+          "xss",
+          "bypasssecuritytrust",
+          "sanitiz",
+          "script injection",
+          "inject"
+        ],
+        "desc": "bypassSecurityTrustHtml on API snippet containing raw user content: XSS"
+      },
+      {
+        "id": "N2",
+        "sev": "important",
+        "file": "src/app/search/search-box.component.ts",
+        "lines": [
+          21,
+          21
+        ],
+        "keys": [
+          "mergemap",
+          "switchmap",
+          "out of order",
+          "out-of-order",
+          "stale",
+          "latest"
+        ],
+        "desc": "mergeMap lets an older response overwrite newer results"
+      },
+      {
+        "id": "N3",
+        "sev": "important",
+        "file": "src/app/search/search-box.component.ts",
+        "lines": [
+          22,
+          24
+        ],
+        "keys": [
+          "onpush",
+          "markforcheck",
+          "change detection",
+          "mutat",
+          "same array",
+          "new array",
+          "reference"
+        ],
+        "desc": "OnPush + in-place array mutation from an async callback: view doesn't update"
+      },
+      {
+        "id": "N4",
+        "sev": "important",
+        "file": "src/app/search/search-box.component.html",
+        "lines": [
+          5,
+          8
+        ],
+        "keys": [
+          "keyboard",
+          "tabindex",
+          "<button",
+          "button",
+          "enter key",
+          "role=",
+          "wcag"
+        ],
+        "desc": "clickable div: not keyboard accessible"
+      }
+    ],
+    "nice_to_find": [
+      {
+        "id": "N6",
+        "file": "src/app/search/search-box.component.html",
+        "keys": [
+          "aria-live",
+          "live region",
+          "announce"
+        ],
+        "desc": "results not announced to screen readers"
+      },
+      {
+        "id": "N7",
+        "file": "src/app/search/search-box.component.ts",
+        "keys": [
+          "catcherror",
+          "kills",
+          "terminat",
+          "stops working",
+          "dies",
+          "error terminates",
+          "permanently"
+        ],
+        "desc": "a failed request errors the stream: search stops until reload (unplanted, found by review)"
+      }
+    ],
+    "bait": [
+      {
+        "id": "N5",
+        "file": "src/app/search/search-box.component.ts",
+        "keys": [
+          "unsubscribe",
+          "leak",
+          "takeuntil"
+        ],
+        "desc": "NOT a defect: the subscription is on the component's own FormControl and is collected with it; reporting it as a leak is noise"
+      }
+    ]
   }
 }

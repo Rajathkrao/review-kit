@@ -2,6 +2,7 @@
 """Track review-kit run progress so any later session can resume a run.
 
   state.py PKG STAGE [--note TEXT] [--args "ORIGINAL ARGS"]   mark STAGE done
+                                                               (`reported` checks the run is complete; --force skips that)
   state.py --list [REPO_DIR]                                   list runs, newest first
   state.py --show PKG                                          print one run's state
   state.py --cleanup PKG                                       remove the run's temporary source worktree
@@ -19,7 +20,50 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from collect import remove_source, commit_ref, source_clean  # noqa: E402
+from collect import remove_source, commit_ref, source_clean, html_decision  # noqa: E402
+from review_data import load_object, validate_review  # noqa: E402
+
+# Lens outputs a finished run must have, by mode (quick reviews inline and needs none).
+MIN_LENSES = {"deep": 4, "full": 5, "pr": 3, "arch": 2, "spec": 1, "standards": 1, "test": 1}
+
+
+def missing_for_report(pkg, st):
+    """What a run still needs before it may be marked `reported`. Empty list = complete."""
+    pkg = Path(pkg)
+    try:
+        meta = load_object(pkg / "meta.json")
+    except ValueError:
+        return []  # not a collector package (e.g. a hand-made --out folder): nothing to enforce
+    missing = []
+    try:
+        fx = validate_review(load_object(pkg / "findings.json"), meta)
+    except ValueError as exc:
+        return [f"a valid findings.json ({exc}); run scripts/review_data.py"]
+    if not (pkg / "report.md").is_file() or not (pkg / "report.md").read_text().strip():
+        missing.append("report.md (save the final report text)")
+    if fx["execution_status"] != "completed":
+        return missing  # failed/partial/empty runs are reported honestly, without the full pipeline
+    mode = meta.get("mode") or st.get("mode") or "review"
+    args = st.get("args") or ""
+    need = MIN_LENSES.get(mode, 0)
+    have = len(list((pkg / "candidates").glob("*.json")))
+    if have < need:
+        missing.append(f"lens results: {have} of at least {need} files in candidates/ ({mode} mode runs "
+                       f"its lenses as rk:lens-reviewer subagents whatever the diff size)")
+    raised = 0
+    for c in (pkg / "candidates").glob("*.json"):
+        try:
+            raised += len(json.loads(c.read_text()).get("candidates") or [])
+        except (OSError, ValueError, AttributeError):
+            pass
+    if need and raised and not (pkg / "candidates-merged.json").exists():
+        missing.append("candidates-merged.json and the rk:finding-verifier pass")
+    decision = html_decision((meta.get("config") or {}).get("html", "auto"), mode)
+    wants_html = ("--html" in args.split() and not decision.startswith("no")) or \
+                 (decision.startswith("yes") and "--no-html" not in args.split())
+    if wants_html and not (pkg / "review.html").is_file():
+        missing.append("review.html (write explainer.json per references/html-explainer.md, then run render_html.py)")
+    return missing
 
 STAGES = ["packaged", "contract", "lenses", "tests", "verified", "reported"]
 
@@ -47,7 +91,7 @@ def load(pkg):
         return {"stages_done": [], "notes": []}
 
 
-def mark(pkg, stage, note=None, args=None):
+def mark(pkg, stage, note=None, args=None, force=False):
     pkg = Path(pkg)
     if stage not in STAGES:
         sys.exit(f"unknown stage {stage}; expected one of {', '.join(STAGES)}")
@@ -66,6 +110,11 @@ def mark(pkg, stage, note=None, args=None):
     if args is not None:
         st["args"] = args
     msg = ""
+    if stage == "reported" and not force:
+        missing = missing_for_report(pkg, st)
+        if missing:
+            sys.exit("Not finished, so not marked reported. Still needed:\n- " + "\n- ".join(missing)
+                     + "\nDo these steps, then mark reported again. (--force only if the user asked to stop early.)")
     if stage == "reported" and (pkg / "meta.json").exists():
         meta = json.loads((pkg / "meta.json").read_text())
         if not (meta.get("config") or {}).get("keep_source"):
@@ -109,6 +158,6 @@ if __name__ == "__main__":
     elif len(a) >= 2:
         note = a[a.index("--note") + 1] if "--note" in a else None
         args = a[a.index("--args") + 1] if "--args" in a else None
-        mark(a[0], a[1], note, args)
+        mark(a[0], a[1], note, args, force="--force" in a)
     else:
         sys.exit(__doc__)
