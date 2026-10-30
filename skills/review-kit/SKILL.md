@@ -228,6 +228,12 @@ report evidence (superpowers verification-before-completion).
 
 ## Rules that apply in every mode
 
+- **No shortcuts by diff size.** `deep`, `full`, `pr`, `arch`, `spec`, `standards` and `test` always
+  run their lenses as `rk:lens-reviewer` subagents and the `rk:finding-verifier`, and write the HTML
+  walkthrough when it is on, however small the change. A small diff makes those steps fast, not
+  optional. Inline single-pass review is what `quick` mode is for. `state.py "$PKG" reported`
+  refuses to finish a run whose required outputs are missing and lists what to do.
+
 - **Evidence before claims.** No finding without a file and line range you read.
   No "tests pass" without output from a run in this session.
 - **Changed code only.** Pre-existing problems on lines the change didn't touch are

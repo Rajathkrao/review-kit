@@ -87,8 +87,8 @@ class RunFolders(unittest.TestCase):
         self.assertIn('contract: ADR-7', st['notes'])
         # Skipping an optional stage (tests) must still leave a reported run complete.
         self.state(pkg, 'verified')
-        self.assertEqual(json.loads((pkg / 'state.json').read_text())['next'], 'reported')
-        self.state(pkg, 'reported')
+        self.assertEqual(json.loads((pkg / 'state.json').read_text())['next'], 'reported', '--force')
+        self.state(pkg, 'reported', '--force')
         self.assertIsNone(json.loads((pkg / 'state.json').read_text())['next'])
         self.assertIn('next=complete', self.state('--list', self.repo))
 
@@ -111,7 +111,7 @@ class RunFolders(unittest.TestCase):
                       src.parents)
         self.assertEqual(src.resolve().relative_to(self.repo.resolve()).parts[0], '.git')
         # Finishing the run removes the copy and its registration.
-        out = self.state(pkg, 'reported')
+        out = self.state(pkg, 'reported', '--force')
         self.assertIn('removed', out)
         self.assertFalse(src.exists())
         self.assertNotIn(str(src), self.worktrees())
@@ -122,13 +122,13 @@ class RunFolders(unittest.TestCase):
         (self.repo / '.review-kit' / 'config.json').write_text('{"keep_source": true}')
         pkg = self.collect('--target', self.first)
         src = Path(self.meta(pkg)['repo_root'])
-        self.state(pkg, 'reported')
+        self.state(pkg, 'reported', '--force')
         self.assertTrue(src.exists())
         (self.repo / '.review-kit' / 'config.json').write_text('{}')
         pkg2 = self.collect('--target', self.first)
         src2 = Path(self.meta(pkg2)['repo_root'])
         (src2 / 'code.py').write_text('edited in the copy\n')
-        out = self.state(pkg2, 'reported')
+        out = self.state(pkg2, 'reported', '--force')
         self.assertIn('kept', out)
         self.assertTrue(src2.exists())
 
@@ -137,7 +137,7 @@ class RunFolders(unittest.TestCase):
         (self.repo / '.review-kit' / 'config.json').write_text('{"keep_source": true}')
         pkg = self.collect('--target', self.first)
         src = Path(self.meta(pkg)['repo_root'])
-        self.state(pkg, 'reported')
+        self.state(pkg, 'reported', '--force')
         self.assertTrue(src.exists())
         self.assertIn('removed', self.state('--cleanup', pkg))
         self.assertFalse(src.exists())
@@ -152,7 +152,7 @@ class RunFolders(unittest.TestCase):
         (self.repo / '.review-kit' / 'config.json').write_text('{"keep_runs": 1}')
         finished = [self.collect('--target', self.first) for _ in range(2)]
         for pkg in finished:
-            self.state(pkg, 'reported')
+            self.state(pkg, 'reported', '--force')
         stale = self.collect('--target', self.first)  # interrupted: never reported
         stale_src = Path(self.meta(stale)['repo_root'])
         old = time.time() - 2 * 86400
@@ -164,6 +164,44 @@ class RunFolders(unittest.TestCase):
         self.assertTrue(stale.exists())  # unfinished runs are kept for /rk:resume
         self.assertFalse(stale_src.exists())
         self.assertNotIn('review-kit/worktrees', self.worktrees())
+
+    def test_reported_requires_the_modes_outputs(self):
+        pkg = self.collect()  # deep mode, html on by default
+        r = subprocess.run([sys.executable, str(SCRIPTS / 'state.py'), str(pkg), 'reported'],
+                           cwd=self.repo, env=self.env, capture_output=True, text=True)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('valid findings.json', r.stderr)
+        (pkg / 'findings.json').write_text(json.dumps(dict(
+            execution_status='completed', verdict='ship', summary='Nothing material', findings=[])))
+        r = subprocess.run([sys.executable, str(SCRIPTS / 'state.py'), str(pkg), 'reported'],
+                           cwd=self.repo, env=self.env, capture_output=True, text=True)
+        self.assertNotEqual(r.returncode, 0)
+        for text in ('report.md', 'lens results: 0 of at least 4', 'rk:finding-verifier', 'review.html'):
+            self.assertIn(text, r.stderr)
+        self.assertNotIn('reported', json.loads((pkg / 'state.json').read_text())['stages_done'])
+        (pkg / 'report.md').write_text('Report')
+        for lens in ('a', 'b', 'c', 'd'):
+            (pkg / 'candidates' / f'{lens}.json').write_text('{"candidates": []}')
+        (pkg / 'candidates-merged.json').write_text('[]')
+        (pkg / 'review.html').write_text('<html></html>')
+        self.state(pkg, 'reported')
+        self.assertIn('reported', json.loads((pkg / 'state.json').read_text())['stages_done'])
+
+    def test_no_html_flag_and_failed_runs_relax_the_gate(self):
+        pkg = self.collect()
+        self.state(pkg, 'packaged', '--args', 'deep --no-html')
+        (pkg / 'findings.json').write_text(json.dumps(dict(
+            execution_status='completed', verdict='ship', summary='Nothing', findings=[])))
+        (pkg / 'report.md').write_text('Report')
+        for lens in ('a', 'b', 'c', 'd'):
+            (pkg / 'candidates' / f'{lens}.json').write_text('{}')
+        (pkg / 'candidates-merged.json').write_text('[]')
+        self.state(pkg, 'reported')  # no review.html needed
+        failed = self.collect()
+        (failed / 'findings.json').write_text(json.dumps(dict(
+            execution_status='failed', verdict='inconclusive', summary='Collection failed', findings=[])))
+        (failed / 'report.md').write_text('Failed honestly')
+        self.state(failed, 'reported')  # no lenses or HTML needed for a failed run
 
     def test_html_is_written_only_in_the_run_folder(self):
         pkg = self.collect()
@@ -182,7 +220,7 @@ class RunFolders(unittest.TestCase):
         src = Path(self.meta(pkg)['repo_root'])
         (src / 'code.py').write_text('valuable edit\n')
         (src / 'notes.txt').write_text('valuable untracked file\n')
-        self.state(pkg, 'reported')
+        self.state(pkg, 'reported', '--force')
         self.collect()
         self.assertEqual((src / 'code.py').read_text(), 'valuable edit\n')
         self.assertEqual((src / 'notes.txt').read_text(), 'valuable untracked file\n')
@@ -194,7 +232,7 @@ class RunFolders(unittest.TestCase):
         (self.repo / '.review-kit' / 'config.json').write_text('{"keep_source": true, "keep_runs": 0}')
         pkg = self.collect('--target', self.first)
         src = Path(self.meta(pkg)['repo_root'])
-        self.state(pkg, 'reported')
+        self.state(pkg, 'reported', '--force')
         self.collect()
         self.assertTrue(src.exists())
         self.assertTrue((pkg / 'meta.json').exists())
@@ -237,7 +275,7 @@ class RunFolders(unittest.TestCase):
     def test_resume_checks_pinned_source_and_missing_source(self):
         pkg = self.collect('--target', self.first)
         self.state('--check-source', pkg)
-        self.state(pkg, 'reported')
+        self.state(pkg, 'reported', '--force')
         r = subprocess.run([sys.executable, str(SCRIPTS / 'state.py'), '--check-source', str(pkg)],
                            env=self.env, text=True, capture_output=True)
         self.assertNotEqual(r.returncode, 0)
