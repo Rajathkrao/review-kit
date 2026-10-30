@@ -2,20 +2,157 @@
   "ts-invoices:feature/invoice-export": {
     "base": "main",
     "must_find": [
-      {"id": "T1", "sev": "critical", "file": "src/routes.ts", "lines": [15, 18], "keys": ["tenant", "query", "idor", "isolation", "other tenant", "?tenant"], "desc": "tenantId taken from ?tenant= query param: cross-tenant export (ADR #1, CLAUDE.md)"},
-      {"id": "T2", "sev": "important", "file": "src/export.ts", "lines": [29, 29], "keys": ["archived"], "desc": "archived invoices not excluded (ADR #2)"},
-      {"id": "T3", "sev": "important", "file": "src/export.ts", "lines": [30, 31], "keys": [">=", "10,000", "10000", "exactly", "boundary", "off-by-one", "MAX_ROWS"], "desc": "exactly 10,000 rows rejected; ADR allows up to 10,000"},
-      {"id": "T4", "sev": "important", "file": "src/export.ts", "lines": [34, 39], "keys": ["empty", "swallow", "''", "silent", "catch"], "desc": "CSV failure returns empty string -> 200 empty file (ADR #6) + console.log"},
-      {"id": "T5", "sev": "important", "file": "src/export.ts", "lines": [17, 26], "keys": ["retry", "unbounded", "infinite", "forever", "hang", "attempt"], "desc": "unbounded audit retry hangs request while audit service is down"},
-      {"id": "T6", "sev": "important", "file": "test/invoices.test.ts", "lines": [13, 14], "keys": ["weaken", "assert.ok", "flaky", "length > 0", "assertion"], "desc": "pagination test assertion weakened to length > 0"}
+      {
+        "id": "T1",
+        "sev": "critical",
+        "file": "src/routes.ts",
+        "lines": [
+          15,
+          18
+        ],
+        "keys": [
+          "tenant",
+          "query",
+          "idor",
+          "isolation",
+          "other tenant",
+          "?tenant"
+        ],
+        "desc": "tenantId taken from ?tenant= query param: cross-tenant export (ADR #1, CLAUDE.md)"
+      },
+      {
+        "id": "T2",
+        "sev": "important",
+        "file": "src/export.ts",
+        "lines": [
+          29,
+          29
+        ],
+        "keys": [
+          "archived"
+        ],
+        "desc": "archived invoices not excluded (ADR #2)"
+      },
+      {
+        "id": "T3",
+        "sev": "important",
+        "file": "src/export.ts",
+        "lines": [
+          30,
+          31
+        ],
+        "keys": [
+          ">=",
+          "10,000",
+          "10000",
+          "exactly",
+          "boundary",
+          "off-by-one",
+          "MAX_ROWS"
+        ],
+        "desc": "exactly 10,000 rows rejected; ADR allows up to 10,000"
+      },
+      {
+        "id": "T4",
+        "sev": "important",
+        "file": "src/export.ts",
+        "lines": [
+          34,
+          39
+        ],
+        "keys": [
+          "empty",
+          "swallow",
+          "''",
+          "silent",
+          "catch"
+        ],
+        "desc": "CSV failure returns empty string -> 200 empty file (ADR #6) + console.log"
+      },
+      {
+        "id": "T5",
+        "sev": "important",
+        "file": "src/export.ts",
+        "lines": [
+          17,
+          26
+        ],
+        "keys": [
+          "retry",
+          "unbounded",
+          "infinite",
+          "forever",
+          "hang",
+          "attempt"
+        ],
+        "desc": "unbounded audit retry hangs request while audit service is down"
+      },
+      {
+        "id": "T6",
+        "sev": "important",
+        "file": "test/invoices.test.ts",
+        "lines": [
+          13,
+          14
+        ],
+        "keys": [
+          "weaken",
+          "assert.ok",
+          "flaky",
+          "length > 0",
+          "assertion"
+        ],
+        "desc": "pagination test assertion weakened to length > 0"
+      }
     ],
     "nice_to_find": [
-      {"id": "T7", "file": "src/export.ts", "lines": [37, 37], "keys": ["console.log", "logger"], "desc": "console.log instead of logger.error (CLAUDE.md)"}
+      {
+        "id": "T7",
+        "file": "src/export.ts",
+        "lines": [
+          37,
+          37
+        ],
+        "keys": [
+          "console.log",
+          "logger"
+        ],
+        "desc": "console.log instead of logger.error (CLAUDE.md)"
+      }
     ],
     "bait": [
-      {"id": "B1", "file": "src/format.ts", "keys": ["formatCurrency", "floor", "truncat", "round"], "desc": "pre-existing bug in untouched file"},
-      {"id": "B2", "file": "src/export.ts", "keys": ["synchronous", "background job", "async", "stream"], "desc": "sync CSV build is a documented ADR trade-off"},
-      {"id": "B3", "file": "src/routes.ts", "keys": ["naming", "`data`", "variable name"], "desc": "style: variable named data"}
+      {
+        "id": "B1",
+        "file": "src/format.ts",
+        "keys": [
+          "formatCurrency",
+          "floor",
+          "truncat",
+          "round"
+        ],
+        "desc": "pre-existing bug in untouched file"
+      },
+      {
+        "id": "B2",
+        "file": "src/export.ts",
+        "keys": [
+          "synchronous",
+          "background job",
+          "async",
+          "stream"
+        ],
+        "desc": "sync CSV build is a documented ADR trade-off"
+      },
+      {
+        "id": "B3",
+        "file": "src/routes.ts",
+        "keys": [
+          "naming",
+          "`data`",
+          "variable name"
+        ],
+        "desc": "style: variable named data"
+      }
     ]
   },
   "ts-invoices:feature/invoice-search": {
@@ -28,15 +165,226 @@
   "cs-orders:feature/cancel-order": {
     "base": "main",
     "must_find": [
-      {"id": "C1", "sev": "critical", "file": "src/Orders.Api/Services/CancellationService.cs", "lines": [14, 15], "keys": ["pending", "invert", "paid"], "desc": "Pending orders blocked; ADR says Pending and Paid are cancellable"},
-      {"id": "C2", "sev": "critical", "file": "src/Orders.Api/Services/CancellationService.cs", "lines": [17, 20], "keys": ["refund", "twice", "double", "idempot", "exactly once", "before", "drift", "order"], "desc": "refund before status update; retries or update failure -> double refund / drift"},
-      {"id": "C3", "sev": "important", "file": "src/Orders.Api/Controllers/OrdersController.cs", "lines": [33, 36], "keys": ["catch", "exception", "swallow", "nocontent", "204"], "desc": "catch (Exception) returns 204: failures reported as success (CLAUDE.md)"},
-      {"id": "C4", "sev": "important", "file": "src/Orders.Api/Data/OrderWriter.cs", "lines": [15, 16], "keys": ["sql", "interpolat", "parameter", "string-built", "injection", "dapper"], "desc": "string-built SQL (CLAUDE.md forbids)"},
-      {"id": "C5", "sev": "important", "file": "src/Orders.Api/Services/CancellationService.cs", "lines": [14, 15], "keys": ["cancelled", "already", "409", "conflict"], "desc": "already-cancelled order is not rejected with 409 (ADR)"}
+      {
+        "id": "C1",
+        "sev": "critical",
+        "file": "src/Orders.Api/Services/CancellationService.cs",
+        "lines": [
+          14,
+          15
+        ],
+        "keys": [
+          "pending",
+          "invert",
+          "paid"
+        ],
+        "desc": "Pending orders blocked; ADR says Pending and Paid are cancellable"
+      },
+      {
+        "id": "C2",
+        "sev": "critical",
+        "file": "src/Orders.Api/Services/CancellationService.cs",
+        "lines": [
+          17,
+          20
+        ],
+        "keys": [
+          "refund",
+          "twice",
+          "double",
+          "idempot",
+          "exactly once",
+          "before",
+          "drift",
+          "order"
+        ],
+        "desc": "refund before status update; retries or update failure -> double refund / drift"
+      },
+      {
+        "id": "C3",
+        "sev": "important",
+        "file": "src/Orders.Api/Controllers/OrdersController.cs",
+        "lines": [
+          33,
+          36
+        ],
+        "keys": [
+          "catch",
+          "exception",
+          "swallow",
+          "nocontent",
+          "204"
+        ],
+        "desc": "catch (Exception) returns 204: failures reported as success (CLAUDE.md)"
+      },
+      {
+        "id": "C4",
+        "sev": "important",
+        "file": "src/Orders.Api/Data/OrderWriter.cs",
+        "lines": [
+          15,
+          16
+        ],
+        "keys": [
+          "sql",
+          "interpolat",
+          "parameter",
+          "string-built",
+          "injection",
+          "dapper"
+        ],
+        "desc": "string-built SQL (CLAUDE.md forbids)"
+      },
+      {
+        "id": "C5",
+        "sev": "important",
+        "file": "src/Orders.Api/Services/CancellationService.cs",
+        "lines": [
+          14,
+          15
+        ],
+        "keys": [
+          "cancelled",
+          "already",
+          "409",
+          "conflict"
+        ],
+        "desc": "already-cancelled order is not rejected with 409 (ADR)"
+      }
     ],
     "nice_to_find": [
-      {"id": "C6", "file": "src/Orders.Api/Data/OrderWriter.cs", "lines": [8, 16], "keys": ["cancellationtoken", "ct", "token"], "desc": "no CancellationToken on MarkCancelledAsync (CLAUDE.md)"}
+      {
+        "id": "C6",
+        "file": "src/Orders.Api/Data/OrderWriter.cs",
+        "lines": [
+          8,
+          16
+        ],
+        "keys": [
+          "cancellationtoken",
+          "ct",
+          "token"
+        ],
+        "desc": "no CancellationToken on MarkCancelledAsync (CLAUDE.md)"
+      }
     ],
     "bait": []
+  },
+  "ts-billing:feature/renewal-job": {
+    "base": "main",
+    "no_spec_hints": "docs/renewals.md states intent only; bugs are design-level",
+    "must_find": [
+      {
+        "id": "R1",
+        "sev": "critical",
+        "file": "src/renewals.ts",
+        "lines": [
+          38,
+          52
+        ],
+        "keys": [
+          "concurren",
+          "overlap",
+          "instances",
+          "3 worker",
+          "race",
+          "lock",
+          "claim",
+          "in parallel",
+          "simultaneous",
+          "two runs"
+        ],
+        "desc": "no claim/lock: overlapping cron runs on 3 instances charge the same subscription twice"
+      },
+      {
+        "id": "R2",
+        "sev": "critical",
+        "file": "src/renewals.ts",
+        "lines": [
+          13,
+          23
+        ],
+        "keys": [
+          "idempoten",
+          "timeout",
+          "etimedout",
+          "timed out"
+        ],
+        "desc": "retry without idempotency key after timeout-after-success double charges"
+      },
+      {
+        "id": "R3",
+        "sev": "important",
+        "file": "src/renewals.ts",
+        "lines": [
+          7,
+          11
+        ],
+        "keys": [
+          "31",
+          "month-end",
+          "end of month",
+          "overflow",
+          "february",
+          "march 3",
+          "rolls over",
+          "roll over",
+          "short month"
+        ],
+        "desc": "setUTCMonth overflow: Jan 31 -> Mar 3, billing date drifts"
+      },
+      {
+        "id": "R4",
+        "sev": "important",
+        "file": "src/renewals.ts",
+        "lines": [
+          25,
+          34
+        ],
+        "keys": [
+          "invoice insert",
+          "invoice write",
+          "after a successful charge",
+          "already charged",
+          "was charged",
+          "charge succeeded",
+          "charged but",
+          "marked past_due",
+          "marks it past_due",
+          "past_due even"
+        ],
+        "desc": "invoice insert failure after a successful charge marks a paid customer past_due (and any non-decline error too)"
+      },
+      {
+        "id": "R5",
+        "sev": "important",
+        "file": "src/renewals.ts",
+        "lines": [
+          40,
+          49
+        ],
+        "keys": [
+          "createdat",
+          "cursor",
+          "tie",
+          "same timestamp",
+          "identical",
+          "skip",
+          "page boundary"
+        ],
+        "desc": "cursor on non-unique createdAt skips subscriptions sharing a timestamp at a page boundary"
+      }
+    ],
+    "nice_to_find": [],
+    "bait": [
+      {
+        "id": "BB1",
+        "file": "src/format.ts",
+        "keys": [
+          "label"
+        ],
+        "desc": "untouched pre-existing helper"
+      }
+    ]
   }
 }

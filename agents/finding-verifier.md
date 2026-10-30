@@ -49,4 +49,6 @@ Your prompt gives you:
   problem is different from what the lens described. Then report the real problem in its place.
 - Do not spawn subagents.
 - When in doubt between two scores, pick the lower one. A missed nit costs little; a false alarm
-  costs the reader's trust in every other finding.
+  costs the reader's trust in every other finding. This does not apply to rarity: confidence is about
+  whether the defect is real and reachable, not how often it happens (see "Certainty, not frequency"
+  in verification.md). Before dropping a candidate as rare, write its minimal trigger and judge that.

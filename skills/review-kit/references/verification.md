@@ -36,6 +36,25 @@ superpowers verification-before-completion (evidence before claims).
 
 Scores between anchors are fine. The report keeps ≥ 80.
 
+### Certainty, not frequency
+
+Confidence answers one question: **is this defect real and reachable in this code?** How often it
+happens and how bad it is are the job of severity, not confidence. Read the rubric's "will be hit in
+practice" as "a real input or sequence reaches it", not "it happens often". This follows the Codex
+finding bar: a finding must be "plausible under a real failure scenario", and the expensive, dangerous
+or hard-to-detect failures in its attack surface are the ones to keep.
+
+Before you score a candidate below 80 because it seems rare or unlikely, write down its **minimal
+trigger**: the smallest concrete input or sequence that causes it in this code (for example "two
+subscriptions created in the same millisecond, the first ending a page of 100"). Then judge that trigger,
+not a worst case you imagined. If the minimal trigger is ordinary in production (concurrent requests,
+retries after a timeout, a month-end date, duplicate timestamps from a bulk import, an empty list, a
+second instance), the defect is real and reachable: score it on certainty, and set severity by impact.
+
+Never drop a reachable defect whose impact is lost or duplicated money, lost or corrupted data, broken
+authorization or tenant isolation, or a silent failure, only because it is uncommon. Report it, and
+let severity carry the likelihood. Put the minimal trigger in `evidence`.
+
 For `standards` and `conventions` findings, "will be hit in practice" means "a reviewer applying
 the written standard would require this change". A standards finding with a concrete remedy that
 makes the code measurably simpler can reach 80; a matter of taste cannot.
@@ -86,7 +105,7 @@ Judge the code on its merits.
       "line_start": 0,
       "line_end": 0,
       "body": "What goes wrong and why.",
-      "evidence": "What you re-read or ran that confirms it.",
+      "evidence": "What you re-read or ran that confirms it, and the minimal trigger.",
       "recommendation": "Concrete fix. Code sketch if short.",
       "confidence": 90,
       "lenses": ["errors", "adversarial"],

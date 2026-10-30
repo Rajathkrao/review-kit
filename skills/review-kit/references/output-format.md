@@ -16,8 +16,11 @@ the mode never produces it (e.g. no "Existing PR comments" outside pr mode).
 
 **1. Critical: <title>**
 `src/export/service.ts:42-47`
-<What goes wrong and why, 1–3 sentences. Name the input or sequence that triggers it.>
+<What goes wrong, for whom and when, 2–4 sentences. Say why the code does it: the wrong assumption.>
+**Trigger:** <the smallest concrete input or sequence that causes it, with real values>
+**Impact:** <what it costs: money, data, security, users affected, and whether it is silent>
 **Fix:** <concrete change; short code sketch if it helps>
+**Test:** <the test that fails today and passes after the fix, one line>
 <sub>confidence 92 · errors, adversarial · verified by test · M2</sub>
 
 **2. Important: <title>**
