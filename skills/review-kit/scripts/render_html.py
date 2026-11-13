@@ -15,6 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from review_data import load_object, validate_review  # noqa: E402
+from collect import validate_source  # noqa: E402
 
 SEV_ORDER = {"critical": 0, "important": 1, "minor": 2}
 SEV_LABEL = {"critical": "Critical", "important": "Important", "minor": "Minor"}
@@ -104,6 +105,12 @@ def highlight(line):
 class Source:
     def __init__(self, pkg, meta):
         self.root = Path(meta.get("repo_root") or ".")
+        if meta.get("source_kind"):
+            try:
+                validate_source(meta, pkg)
+            except (OSError, ValueError, KeyError, RuntimeError):
+                # After cleanup or edits, only saved diff lines describe the reviewed revision.
+                self.root = None
         self.changed = {}  # path -> set of new-file line numbers added/modified
         self.diff_text = {}  # path -> {line: text} from the diff (fallback when source is gone)
         self.new_files = set()
@@ -124,7 +131,7 @@ class Source:
                     self.changed.setdefault(cur, set()).add(n)
 
     def lines(self, path):
-        text = read(self.root / path)
+        text = read(self.root / path) if self.root is not None else ""
         if text:
             return text.split("\n")
         known = self.diff_text.get(path)

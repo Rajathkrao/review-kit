@@ -66,6 +66,8 @@ def validate_review(value, meta=None):
         raise ValueError("findings.json requires execution_status: " + ", ".join(statuses))
     if meta and meta.get("size") == "empty" and status != "nothing-to-review":
         raise ValueError("Empty collected scopes require execution_status nothing-to-review")
+    if meta and meta.get("size") not in (None, "empty") and status == "nothing-to-review":
+        raise ValueError("Nonempty collected scopes cannot be nothing-to-review")
     if not isinstance(value.get("summary"), str) or not value["summary"].strip():
         raise ValueError("findings.json requires a nonempty summary")
     findings = value.get("findings")
@@ -102,7 +104,7 @@ def validate_review(value, meta=None):
         if status in ("failed", "nothing-to-review") and findings:
             raise ValueError(f"{status} cannot include findings")
     else:
-        if meta and meta.get("collection_status") in ("partial", "failed"):
+        if meta and "collection_status" in meta and meta["collection_status"] != "completed":
             raise ValueError("Incomplete collection cannot produce a completed review")
         kept = [f for f in findings if f["confidence"] >= 80]
         expected = ("dont-ship" if any(f["severity"] == "critical" for f in kept) else

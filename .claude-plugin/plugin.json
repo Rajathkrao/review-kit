@@ -1,6 +1,6 @@
 {
   "name": "rk",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Code review that checks the change against its purpose (ADR/spec/plan), runs lenses in parallel, verifies every finding before reporting it, and only shows what survives. Modes: quick, deep (adversarial), spec, pr, test, arch, standards, full. Optional HTML explainer and second-model review.",
   "author": {
     "name": "Rajath",

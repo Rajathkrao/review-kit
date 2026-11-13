@@ -171,6 +171,12 @@ JSON requires these explicit states and evidence labels; see
 `skills/review-kit/references/verification.md` for the format and migration of
 older report packages. A missing test runtime is not a passing test.
 
+Run progress and source reuse are checked at completion/resume boundaries. Reported runs
+are terminal; revisiting an earlier stage of an incomplete run invalidates downstream caches.
+Live-source changes require a new run, and submitting PR comments requires an unchanged
+saved preview. See [the state-machine audit](docs/state-machines.md) for the boundaries,
+regression coverage and compatibility notes.
+
 Commits, ranges and PRs are reviewed against the exact reviewed commit, never your checkout:
 - If your checkout already sits, clean, at that commit (for example you checked out the PR
   branch), it is used directly, so nothing is copied. Non-ignored untracked files also require a copy.

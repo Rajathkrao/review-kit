@@ -180,6 +180,7 @@ class RunFolders(unittest.TestCase):
             self.assertIn(text, r.stderr)
         self.assertNotIn('reported', json.loads((pkg / 'state.json').read_text())['stages_done'])
         (pkg / 'report.md').write_text('Report')
+        (pkg / 'contract.md').write_text('Purpose: review this change')
         for lens in ('a', 'b', 'c', 'd'):
             (pkg / 'candidates' / f'{lens}.json').write_text('{"candidates": [{"title": "x"}]}')
         (pkg / 'review.html').write_text('<html></html>')
@@ -196,8 +197,9 @@ class RunFolders(unittest.TestCase):
         (pkg / 'findings.json').write_text(json.dumps(dict(
             execution_status='completed', verdict='ship', summary='Nothing', findings=[])))
         (pkg / 'report.md').write_text('Report')
+        (pkg / 'contract.md').write_text('Purpose: review this change')
         for lens in ('a', 'b', 'c', 'd'):
-            (pkg / 'candidates' / f'{lens}.json').write_text('{}')
+            (pkg / 'candidates' / f'{lens}.json').write_text('{"candidates": []}')
         self.state(pkg, 'reported')  # no review.html needed; no candidates, so no verifier pass needed
         failed = self.collect()
         (failed / 'findings.json').write_text(json.dumps(dict(

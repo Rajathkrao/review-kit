@@ -4,11 +4,11 @@ PRs are welcome. The flow is automatic:
 
 1. Fork, branch, open a PR against `main`.
 2. The `validate` check runs (manifests, scripts, frontmatter, collector on the fixtures).
-3. Auto-merge is switched on for your PR. It squash-merges by itself as soon as CI is green
-   **and** the code owner approves. No need to ping anyone; approvals are usually quick.
+3. Auto-merge is enabled only when the workflow can verify that branch protection requires
+   the `validate` check and an approving review. Otherwise merge manually after checking both.
 
-Because this plugin runs scripts on every user's machine, every outside change gets one
-approval before it ships. Nothing else gates it.
+Because this plugin runs scripts on users' machines, contributors should obtain an approving
+review before merging. The workflow does not install branch protection or bypass any gates.
 
 ## What makes a PR easy to approve
 

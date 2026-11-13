@@ -267,6 +267,7 @@ class OutputTests(TemporaryCase):
 
     def test_posting_preflight_fails_closed(self):
         self.package()
+        post_review.build(self.pkg)
         sentinel=self.root/'posted'
         self.env['SENTINEL']=str(sentinel)
         self.cli('gh', '''import sys,os

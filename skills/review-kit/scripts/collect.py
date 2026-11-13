@@ -18,6 +18,7 @@ import re
 import subprocess
 import sys
 import shutil
+import hashlib
 from pathlib import Path
 
 CONTEXT = "-U10"
@@ -71,6 +72,51 @@ def source_clean(root):
                    cwd=root, check=True).stdout.strip()
 
 
+def source_fingerprint(root, package=None):
+    """Bind live-source results to HEAD, tracked contents and non-ignored new files."""
+    exclusions = [EXCLUDE]
+    if package is not None:
+        try:
+            relative = Path(package).resolve().relative_to(Path(root).resolve())
+            exclusions.append(f":(literal,exclude){relative.as_posix()}")
+        except ValueError:
+            pass
+    digest = hashlib.sha256()
+    digest.update(commit_ref(root, "HEAD").encode())
+    digest.update(git("diff", "--binary", "HEAD", "--", ".", *exclusions,
+                      cwd=root, check=True).stdout.encode())
+    paths = git("ls-files", "-z", "--others", "--exclude-standard", "--", ".", *exclusions,
+                cwd=root, check=True).stdout.split("\0")
+    for name in sorted(p for p in paths if p):
+        path = Path(root, name)
+        digest.update(json.dumps(name).encode() + b"\0")
+        if path.is_symlink():
+            content = os.readlink(path).encode()
+            digest.update(b"symlink\0" + hashlib.sha256(content).digest())
+        else:
+            file_digest = hashlib.sha256()
+            with path.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    file_digest.update(chunk)
+            digest.update(b"file\0" + file_digest.digest())
+    return digest.hexdigest()
+
+
+def validate_source(meta, package):
+    """Source may only supply reusable evidence while it still matches collection."""
+    root = meta["repo_root"]
+    kind = meta.get("source_kind")
+    if kind == "working-tree":
+        if not meta.get("source_fingerprint") or source_fingerprint(root, package) != meta["source_fingerprint"]:
+            raise ValueError("live source changed or this older run has no source fingerprint")
+    elif kind in ("pinned-worktree", "checkout-at-reviewed-commit"):
+        if (not Path(root).is_dir() or commit_ref(root, "HEAD") != meta["reviewed_commit"] or
+                not source_clean(root)):
+            raise ValueError("reviewed source is missing or changed")
+    else:
+        raise ValueError("unknown source kind")
+
+
 def snapshot(root, head, name):
     """Pin context reads to `head` without touching the caller's HEAD, index or files.
 
@@ -109,11 +155,14 @@ def default_base(root):
     return None
 
 
-def untracked_diff(root, paths_filter=None):
+def untracked_diff(root, paths_filter=None, package=None):
     files = [f for f in out("ls-files", "--others", "--exclude-standard", cwd=root).splitlines()
              if not f.startswith(RK_DIR + "/")]
     if paths_filter:
         files = [f for f in files if any(f == p or f.startswith(p.rstrip("/") + "/") for p in paths_filter)]
+    if package is not None:
+        package = Path(package).resolve()
+        files = [f for f in files if package not in Path(root, f).resolve().parents]
     chunks = []
     for f in files:
         full = Path(root, f)
@@ -205,6 +254,8 @@ def remove_source(meta_path, honor_keep=True):
         meta = json.loads(Path(meta_path).read_text())
     except (OSError, ValueError):
         return "no meta"
+    if not isinstance(meta, dict):
+        return "no meta"
     src = meta.get("repo_root")
     if meta.get("source_kind") != "pinned-worktree" or meta.get("source_removed") or not src:
         return "nothing to remove"
@@ -233,8 +284,13 @@ def cleanup_runs(root, keep, current=None):
         try:
             st = json.loads((d / "state.json").read_text())
         except (OSError, ValueError):
-            st = {}
-        done = "reported" in st.get("stages_done", [])
+            continue
+        # Corrupt/partially-written progress is unknown, never permission to remove source.
+        stages = st.get("stages_done", []) if isinstance(st, dict) else None
+        if (not isinstance(stages, list) or
+                any(s not in ("packaged", "contract", "lenses", "tests", "verified", "reported") for s in stages)):
+            continue
+        done = "reported" in stages
         if done:
             finished.append(d)
         progress = d / "state.json"
@@ -537,7 +593,14 @@ def main():
     (pkg / "candidates").mkdir(exist_ok=True)
 
     meta = {"repo_root": root, "repo": repo_name, "target": target or "(current branch)",
-            "created": stamp, "kind": None, "mode": a.mode, "run_dir": str(pkg), "config": cfg}
+            "created": stamp, "kind": None, "mode": a.mode, "run_dir": str(pkg), "config": cfg,
+            "original_repo_root": root, "source_kind": "working-tree", "collection_status": "failed"}
+    # Publish a fail-closed initial state before any fallible collection. An interrupted run
+    # must not look complete, and allocated worktrees must remain discoverable for cleanup.
+    (pkg / "meta.json").write_text(json.dumps(meta, indent=2))
+    (pkg / "state.json").write_text(json.dumps({"mode": a.mode, "target": meta["target"],
+        "stages_done": [], "next": "packaged", "notes": []}, indent=2))
+    live_fingerprint = source_fingerprint(root, pkg)
     branch = out("rev-parse", "--abbrev-ref", "HEAD", cwd=root)
     pr_body = ""
     untracked = []
@@ -586,7 +649,7 @@ def main():
             mb = out("rev-parse", "HEAD~1", cwd=root) or empty_tree(root)
         args = ["diff", CONTEXT, mb, "--", *(path_filter or ["."]), EXCLUDE]
         diff = git(*args, cwd=root, check=True).stdout
-        udiff, untracked = untracked_diff(root, path_filter)
+        udiff, untracked = untracked_diff(root, path_filter, pkg)
         diff += udiff
         commits = out("log", "--oneline", "--no-decorate", f"{mb}..HEAD", cwd=root)
         base, head = mb, "WORKTREE"
@@ -618,12 +681,18 @@ def main():
     source_kind = "working-tree"
     if committed:
         root, source_kind = snapshot(root, head, pkg.name)
+    meta.update({"repo_root": root, "source_kind": source_kind,
+                 "reviewed_commit": head if committed else commit_ref(root, "HEAD")})
+    (pkg / "meta.json").write_text(json.dumps(meta, indent=2))
+    if not committed and source_fingerprint(root, pkg) != live_fingerprint:
+        raise ValueError("Live source changed while collecting; start a fresh run")
     warnings = []
     if gh_info:
         warnings = json.loads((pkg / "pr-comments.json").read_text()).get("warnings", [])
     meta.update({"repo_root": root, "original_repo_root": original_root,
                  "reviewed_commit": head if committed else commit_ref(root, "HEAD"),
                  "source_kind": source_kind,
+                 "source_fingerprint": live_fingerprint if not committed else None,
                  # Code context (diff, commits, pinned source) is complete at this point; failures
                  # there already aborted. Missing PR *comment* context only limits comment triage.
                  "collection_status": "completed",

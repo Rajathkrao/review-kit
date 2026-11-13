@@ -48,6 +48,8 @@ PY
 OUT="$PKG/codex-output.json"
 LOG="$PKG/codex.log"
 run_codex() {
+  # A failed attempt can leave a valid-looking file; each retry must produce its own output.
+  rm -f "$OUT"
   codex exec --sandbox read-only --skip-git-repo-check -C "$ROOT" "$@" -o "$OUT" - < "$PKG/codex-prompt.md" >"$LOG" 2>&1
 }
 if ! run_codex --output-schema "$ASSETS/codex-review-schema.json"; then
