@@ -12,9 +12,8 @@ This project includes material from third-party projects:
 
 2. anthropics/claude-plugins-official (https://github.com/anthropics/claude-plugins-official)
    Licensed under the Apache License, Version 2.0.
-   - The confidence rubric in skills/review-kit/references/verification.md is quoted from
-     plugins/code-review/commands/code-review.md. Other review criteria are adapted from
-     plugins/pr-review-toolkit agents.
+   - Review criteria (false-positive list, silent-failure and test-gap checks) are adapted from
+     plugins/code-review and plugins/pr-review-toolkit.
 
 3. addyosmani/agent-skills (https://github.com/addyosmani/agent-skills), MIT License,
    Copyright (c) 2025 Addy Osmani. Review criteria adapted throughout the lens references.
@@ -23,4 +22,3 @@ This project includes material from third-party projects:
    Copyright (c) 2025 Jesse Vincent. Review criteria adapted throughout the lens references.
 
 A copy of the Apache License 2.0 is available at https://www.apache.org/licenses/LICENSE-2.0.
-skills/review-kit/references/SOURCES.md maps each rule to its source.

@@ -106,11 +106,14 @@ def validate_review(value, meta=None):
     else:
         if meta and "collection_status" in meta and meta["collection_status"] != "completed":
             raise ValueError("Incomplete collection cannot produce a completed review")
-        kept = [f for f in findings if f["confidence"] >= 80]
-        expected = ("dont-ship" if any(f["severity"] == "critical" for f in kept) else
-                    "ship-after-fixes" if any(f["severity"] == "important" for f in kept) else "ship")
+        # Every entry in findings is a confirmed finding; plausible ones live in "plausible".
+        expected = ("dont-ship" if any(f["severity"] == "critical" for f in findings) else
+                    "ship-after-fixes" if any(f["severity"] == "important" for f in findings) else "ship")
         if value.get("verdict") != expected:
             raise ValueError(f"Verdict must be {expected} for the verified findings")
+    for key in ("plausible", "dropped"):
+        if not isinstance(value.get(key, []), list):
+            raise ValueError(f"findings.json {key} must be an array")
     return value
 
 def main():

@@ -9,14 +9,13 @@ review the local branch instead.
 
 ## 1. Eligibility
 
-From `$PKG/pr.json`: if the PR is closed or merged, ask whether to continue. If it's a draft,
-continue but say so. If it is an automated PR (dependency bot), switch the lens set to the
+From `$PKG/pr.json`: if the PR is closed, merged or a draft, continue and say so in the first line. If it is an automated PR (dependency bot), switch the lens set to the
 dependency checks in the `standards` lens (changelog, one dependency per change, lockfile).
 
 ## 2. Purpose
 
 The PR body and linked issues (`closingIssuesReferences`) are contract candidates alongside any
-ADR/spec in the repo. Follow `intake.md`. The PR description is a claim about the change; verify
+ADR/spec in the repo. The PR description is a claim about the change; verify
 it against the diff.
 
 ## 3. Review

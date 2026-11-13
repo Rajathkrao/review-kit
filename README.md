@@ -1,12 +1,11 @@
 # review-kit
 
-Code review for Claude Code that checks a change against **what it was meant to do**, runs focused
-reviewers in parallel, tries to **disprove every finding** before showing it, and reports only what
-survives. Built from the review rules in addyosmani/agent-skills, obra/superpowers,
-openai/codex-plugin-cc and Anthropic's code-review / pr-review-toolkit plugins
-(see `skills/review-kit/references/SOURCES.md`).
+Fast code review for Claude Code. It checks a change against **what it was meant to do**, hunts
+with adversarial lenses, checks every candidate against the code, and **never drops a candidate
+without a concrete disproof**: what can't be confirmed or refuted is shown as "worth a look", and
+what it dismisses is listed with the reason so you can overrule it. Strong on Python.
 
-## Install (2 commands)
+## Install
 
 Inside Claude Code:
 
@@ -15,10 +14,8 @@ Inside Claude Code:
 /plugin install rk@review-kit-marketplace
 ```
 
-Start a new Claude Code session, then try `/rk:quick` in any git repo.
-
-**Update later:** `/plugin marketplace update review-kit-marketplace`
-**Remove:** `/plugin uninstall rk@review-kit-marketplace`
+Start a new session, then run `/rk:review` in any git repo.
+**Update:** `/plugin marketplace update review-kit-marketplace` · **Remove:** `/plugin uninstall rk@review-kit-marketplace`
 
 <details><summary>Other ways to install</summary>
 
@@ -35,175 +32,95 @@ claude --plugin-dir ./review-kit
   "enabledPlugins": { "rk@review-kit-marketplace": true }
 }
 ```
-
-If `/plugin marketplace add` fails with an SSH error, use the HTTPS URL:
-`/plugin marketplace add https://github.com/Rajathkrao/review-kit.git`
 </details>
 
-**Requirements:** `git` and `python3` (3.9+). PR mode needs the GitHub CLI logged in (`gh auth login`).
-Second-model review uses the Codex CLI if it is installed and logged in
-(`npm i -g @openai/codex && codex login`), otherwise a different Claude model. Nothing else to install.
-
-## Quick start
-
-```
-/rk:quick                 # fast review of your current branch + uncommitted changes
-/rk:deep                  # full adversarial review + step-by-step HTML walkthrough
-/rk:spec                  # review against the ADR / spec / plan for this change
-/rk:pr 1234 --post        # review a GitHub PR, judge its comments, post after you approve
-```
+**Requirements:** `git` and `python3` (3.9+). Recommended: `ruff` on PATH (`pip install ruff`) for
+a sub-second static pass over changed Python lines. PR mode needs `gh auth login`. Second-model
+review uses the Codex CLI if installed and logged in, otherwise a different Claude model.
 
 ## Commands
 
-| Command | What it does | Typical time |
-|---|---|---|
-| `/rk:quick [target]` | One adversarial pass checked against the change's purpose, verified, at most 7 findings. The everyday choice | ~1 min, ~$0.20 |
-| `/rk:deep [target]` | Adversarial + correctness + history + errors/tests + security lenses in parallel, then verification | 5–12 min |
-| `/rk:spec [target]` | Checks the change against its ADR / spec / plan, requirement by requirement | 3–6 min |
-| `/rk:pr <number\|url>` | Deep review of a GitHub PR, judges its existing comments, `--post` to publish | 6–14 min |
-| `/rk:test [target]` | Finds the tests that cover the change, asks, runs them, mutation-checks; live checks on request | varies |
-| `/rk:arch [target]` | Design, boundaries, contracts, types, and whether the approach is right | 4–8 min |
-| `/rk:standards [target]` | Against coding standards and your CLAUDE.md, with concrete simplifications | 3–6 min |
-| `/rk:full [target]` | deep + spec + arch + standards, then offers tests | 10–20 min |
-| `/rk:review` | Asks which of the above to run | |
-| `/rk:resume [run]` | Continues an interrupted run, from this or any earlier session | |
+| Command | What it does |
+|---|---|
+| `/rk:review [target]` | **The default.** Picks quick or deep from the size and risk of the change |
+| `/rk:quick [target]` | One inline adversarial pass against the change's purpose, every finding checked |
+| `/rk:deep [target]` | Four lenses in parallel (correctness, adversarial, contract, history), parallel verification, HTML walkthrough |
+| `/rk:pr <number\|url>` | Deep review of a GitHub PR, judges its existing comments, `--post` to publish after you approve |
+| `/rk:spec [target]` | Requirement-by-requirement check against the ADR / spec / plan |
+| `/rk:arch [target]` | Design, boundaries, contracts, types, and whether the approach is right |
+| `/rk:test [target]` | Finds and runs the tests that cover the change (asks first), mutation-checks them |
+| `/rk:full [target]` | deep + architecture, then offers tests |
 
 **Target**: nothing (current branch vs its base, plus uncommitted work), `main...feature`, a commit,
 a PR number or URL, or a path.
+**Flags**: `--html` / `--no-html` · `--second-model` · `--run` (pre-approve tests and repro scripts) ·
+`--all` (show minor findings) · `--focus "auth changes"` · `--base develop` · pr mode: `--post`, `--quick`.
 
-**Flags** (any mode): `--html` / `--no-html` the step-by-step walkthrough page (on by default in deep, full, pr, arch) · `--second-model` independent review by
-Codex or another Claude model · `--run` pre-approve running the proposed tests · `--all` also show
-lower-confidence and minor findings · `--focus "auth changes"` · `--base develop` · pr mode:
-`--post`, `--quick`.
+## Why it is fast
 
-## How it keeps the noise down
+- **One context call.** `collect.py` prints everything the review needs in one tool result: size,
+  risk signals, suggested depth, purpose docs, project rules, learnings, ruff hints, call sites of
+  changed Python functions, and the numbered diff. Nothing is written in your repo.
+- **No questions.** It never stops to ask which mode or what the change is for. It infers the
+  purpose and says what it used.
+- **Parallel where it pays.** Quick mode is a single inline pass. Deep mode runs its lenses and its
+  verifiers concurrently, and they return results directly instead of writing files.
+- **Files only when needed.** `findings.json` and the HTML page are written only when you ask for
+  the walkthrough or for PR posting.
 
-1. Every lens writes *candidates*, not findings.
-2. A separate verifier re-reads the code for each candidate, tries to disprove it, and scores it with
-   Anthropic's 0–100 rubric. Below 80 is dropped (kept in the package with the reason).
-3. Pre-existing issues, linter-level nits and style without a written rule are always dropped.
-4. Minor findings are hidden by default (except in `standards` mode); 5 findings max in quick mode,
-   10 otherwise.
-5. Zero findings is a valid result.
+## Why it doesn't dismiss real bugs
 
-## How it finds the purpose
+Every candidate gets one of three labels:
 
-Before reviewing, it looks for an ADR, spec, plan or design doc tied to the change (changed `.md`
-files, `docs/adr`, `docs/decisions`, specs/plans mentioned in commits, branch name or PR body). It
-shows you the candidates. If there are none, it asks what the change is for. Findings that break a
-stated requirement cite it (`M2`).
+| Label | When | Shown as |
+|---|---|---|
+| confirmed | the trigger was traced to the wrong result in the code, or a repro showed it | Findings |
+| plausible | reachable and not disproven, but one fact outside view decides it | Worth a look |
+| refuted | specific code, test or doc disproves it | Dismissed, one line with the disproof |
+
+Rarity is never a disproof ("two webhooks in the same second" is an ordinary production event), and
+"nothing calls it yet" is not a disproof for new code. With `--run`, contested pure-logic findings
+are settled with a tiny repro script.
+
+## Python depth
+
+`references/python.md` covers what tests and type checkers miss: blocking calls in `async def`,
+unreferenced `create_task`, check-then-act across an `await`, mutable defaults, naive vs aware
+datetimes, float money and banker's rounding, SQL built with f-strings, N+1 and lazy loading,
+transactions around external side effects, Django/SQLAlchemy/FastAPI/Pydantic traps, migrations
+under live data, unsafe deserialization, path traversal, and public API breaks. The context
+command runs ruff's bug-class rules (B, ASYNC, DTZ, S, BLE, RUF006, …) on added lines only and lists
+the callers of every changed function, so a broken caller is caught without crawling the repo.
+
+## Learnings
+
+Tell it "remember: we don't flag print() in scripts" or reject a finding with a reason, and it adds
+a line to `<repo>/.review-kit/learnings.md`. Every later review reads that file and obeys it.
+Team-wide rules go in `REVIEW.md` or `CLAUDE.md`.
 
 ## Output
 
-A fixed-format report: verdict, what it was checked against, verification evidence, findings with
-file:line, fix and confidence, spec compliance per requirement, existing PR comment verdicts, and
-what was dropped or not checked.
+A fixed-format report: verdict, what the change does in plain words, what it was checked against,
+execution and verification evidence, findings (file:line, trigger, impact, fix, test), worth a look,
+spec compliance, PR comment verdicts, dismissed candidates with their disproof, and what was not
+checked. Findings are numbered, so "fix 1 and 3" works.
 
-The walkthrough page (`review.html`, on by default in deep, full, pr and arch) shows your actual code
-in the order it runs, with each problem pinned as a margin note on the exact line. Every problem gets
-the sequence of events that triggers it, the root cause, the impact, a fix as a diff, and a test that
-fails today. It is self-contained, works offline, and supports light and dark mode; saved as `review.html`
-in the run folder.
+The HTML walkthrough (on by default in deep, full, pr and arch) shows your real code in execution
+order, with each problem pinned to its line, the sequence of events that triggers it, root cause,
+impact, a fix as a diff and a test that fails today. It is self-contained and works offline. It is
+written to the scratch folder in your system temp directory and its path is printed.
 
-PR comments are posted only with `--post` and only after you approve the exact preview: one review,
-event COMMENT, inline comments on diff lines, everything else in the summary.
-
-## Where the files go
-
-Every run gets its own folder in the repo you're reviewing:
-
-```
-<repo>/.review-kit/
-  README.md          what this folder is
-  config.json        optional settings (see below)
-  latest             the most recent run
-  runs/
-    20261025-091200-deep-feature-invoice-export/
-      state.json       stages done + next stage (used by /rk:resume)
-      summary.md       target, files, commits, purpose-doc candidates
-      diff.patch, diff-numbered.txt
-      contract.md      the purpose the change was checked against
-      candidates/      what each lens raised
-      findings.json    verified findings + everything dropped and why
-      test-results.md  commands run and their output (when tests ran)
-      report.md        the final review, exactly as shown
-      review.html      the step-by-step walkthrough
-```
-
-`.review-kit/` is added to `.git/info/exclude`, so it stays out of `git status`, commits and reviewed
-diffs, and no tracked file is changed. To share reviews through git, delete that line and commit the
-folder. Any agent session can read a run folder to pick up where another left off; `/rk:resume`
-does it for you.
-
-**Settings** go in `.review-kit/config.json` (this repo) or `~/.review-kit/config.json` (all repos):
-
-```json
-{ "html": "auto", "keep_runs": 50, "keep_source": false }
-```
-
-- `html`: `"auto"` (default) writes the walkthrough in deep, full, pr and arch runs and otherwise only with
-  `--html`; `"always"` on every run; `"flag"` only with `--html`; `"never"` never.
-- `keep_runs`: finished runs beyond this number are deleted, oldest first (default 50), except
-  runs with dirty source worktrees or `keep_source: true`; their source and metadata are preserved.
-- `keep_source`: keep the temporary source copy after a run finishes (default `false`, see below).
-
-## Tips
-
-- If superpowers or agent-skills are installed too, use the `/rk:*` commands directly. Their review
-  skills answer to generic phrasings such as "review this", while `/rk:*` always runs review-kit.
-- Put your team's review rules in CLAUDE.md. The conventions lens enforces only rules that are written down.
-- Each run folder (below) keeps the diff, contract, candidates, findings and test results. It's
-  useful for auditing why something was or wasn't reported.
+**Settings:** `.review-kit/config.json` in the repo or `~/.review-kit/config.json`:
+`{"html": "auto" | "always" | "flag" | "never"}`.
 
 ## Tested
 
-See `evals/RESULTS.md`. On seeded-bug repos it found every planted defect in deep mode, including
-one only visible from the ADR, with zero noise findings. On a clean change it reported nothing,
-where the built-in `/code-review` reported six findings. Deep reviews cost about $0.40–1.00 and take
-1–2.5 minutes; quick reviews about $0.15 and 30 seconds. Re-run the suite with `evals/run_case.sh`
-and score with `evals/score.py`.
-
-## Reliable execution and evidence
-
-Reviews now distinguish `completed`, `partial`, `failed` and `nothing-to-review`.
-Only completed reviews can produce a clean verdict or be posted. Final finding
-JSON requires these explicit states and evidence labels; see
-`skills/review-kit/references/verification.md` for the format and migration of
-older report packages. A missing test runtime is not a passing test.
-
-Run progress and source reuse are checked at completion/resume boundaries. Reported runs
-are terminal; revisiting an earlier stage of an incomplete run invalidates downstream caches.
-Live-source changes require a new run, and submitting PR comments requires an unchanged
-saved preview. See [the state-machine audit](docs/state-machines.md) for the boundaries,
-regression coverage and compatibility notes.
-
-Commits, ranges and PRs are reviewed against the exact reviewed commit, never your checkout:
-- If your checkout already sits, clean, at that commit (for example you checked out the PR
-  branch), it is used directly, so nothing is copied. Non-ignored untracked files also require a copy.
-- Otherwise a temporary detached worktree is created under `.git/review-kit/worktrees/`, outside
-  your working tree, so test runners, compilers and searches in your repo never see it. It is
-  removed when the run finishes, and leftovers from interrupted runs are cleaned up by the next
-  run after a day without progress. Dirty copies are never force-deleted. Set `"keep_source": true`
-  to preserve a run's source and metadata during automatic cleanup too.
-
-Dependencies/submodules are not installed in the temporary copy; unavailable required checks must
-be disclosed. The run records `original_repo_root`, `repo_root`, `source_kind` and
-`reviewed_commit`. Branch reviews with uncommitted changes use live source and must be rerun if
-that source changes.
-
-`evals/run_case.sh` rejects failed setup/reviewer runs and existing run names;
-use a fresh run name for every evaluation. Its `status.json` records execution
-outcome, and a report is emitted only for a successful nonempty Claude result.
-This validates execution, not semantic correctness: `evals/score.py` remains a
-rough keyword-based aid and must not be treated as an authoritative quality score.
-
-Run local regression checks without network/model credentials:
+Real headless Claude Code runs on seeded-bug repos, before and after each change, are recorded in
+the PR descriptions and `evals/RESULTS.md`. Run them with `evals/run_case.sh`.
 
 ```bash
-python -m unittest discover -s tests -v
-python -m pip install -r tests/requirements.txt  # development-only YAML validation
-python tests/check_frontmatter.py
+python -m unittest discover -s tests -v   # no network or model needed
 ```
 
-Python/shell runtime helpers remain dependency-free. Tests use temporary
-repositories and fake CLIs, including PR posting; they do not publish reviews.
+Python and shell helpers are dependency-free. Tests use temporary repositories and fake CLIs,
+including PR posting; they never publish anything.

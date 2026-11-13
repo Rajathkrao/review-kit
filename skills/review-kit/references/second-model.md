@@ -13,7 +13,7 @@ openai/codex-plugin-cc (adversarial prompt and output schema).
 1. **Codex CLI**, if `codex` is on PATH and logged in.
 2. **A different Claude model** as a subagent: if the session runs on Opus, use Sonnet;
    otherwise use Opus. Spawn `rk:lens-reviewer` with the `model` parameter set and the
-   `adversarial` lens.
+   `adversarial` lens, in the same message as the other lenses. Its JSON joins the candidates.
 
 ## Codex
 
@@ -31,7 +31,8 @@ The script:
 - converts Codex's output (severity critical/high/medium/low, confidence 0–1) into a candidates file
   at `$PKG/candidates/second-model.json` (high→important, medium/low→minor, confidence ×100)
 
-Run it in the background (Bash `run_in_background: true`) while the lenses run. It typically
+Run it in the background (Bash `run_in_background: true`) while the lenses run, and read
+`$PKG/candidates/second-model.json` before verification. It typically
 takes 2–6 minutes. If it exits 3 (unavailable), fall back to a Claude model and say so.
 
 Interactive runs: before the first Codex call in a session, confirm once: "Run Codex
