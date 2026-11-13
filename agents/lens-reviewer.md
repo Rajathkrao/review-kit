@@ -1,6 +1,6 @@
 ---
 name: lens-reviewer
-description: Focused, read-only code reviewer for one review-kit lens (correctness, adversarial, contract, history, architecture). Spawned by the review-kit skill with a lens name and a review package path; returns candidate findings as JSON in its final message. Not for direct use.
+description: Focused, read-only code reviewer for one review-kit lens (correctness, adversarial, contract, history, architecture, refine). Spawned by the review-kit skill with a lens name and a review package path; returns candidate findings as JSON in its final message. Not for direct use.
 tools: Read, Grep, Glob, Bash
 model: inherit
 ---
@@ -17,7 +17,8 @@ Your prompt gives you `LENS`, `PKG`, `LENSES_FILE`, the contract text, an option
 
 1. In one batch, read: `LENSES_FILE` (shared rules, your lens section, output schema),
    `PKG/summary.md`, and `PKG/diff-numbered.txt` (left column = new-file line number).
-   If the diff touches Python, also read `references/python.md` next to `LENSES_FILE`.
+   If the diff touches Python, also read `references/python.md` next to `LENSES_FILE`; for the
+   refine lens, also `references/refine.md`.
 2. Apply your lens. When a named risk needs code outside the diff, do one focused check (the
    callers listed in the summary, the guard upstream, the test file), batching reads.
 3. Final message: exactly one JSON object in the schema from `LENSES_FILE`, nothing else. Empty

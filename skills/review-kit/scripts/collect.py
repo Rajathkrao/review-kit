@@ -46,6 +46,7 @@ RISK = {
     "secrets": r"(secret|password|api_key|private_key|BEGIN [A-Z ]*PRIVATE KEY)",
 }
 RUFF_SELECT = "F,B,E9,PLE,ASYNC,S,BLE,DTZ,RUF006,RUF012,PLW0120,PLW0602,PLW1508,PLW1510,PLW3301,TRY002"
+RUFF_REFINE = "SIM,PERF,RET,C4,PIE,FURB,UP,ERA,ARG,PLR1714,PLR5501,PLR1730,PLR6201,RUF005,RUF015,RUF019"
 RUFF_IGNORE = "S101,S311,B008,B904,S603,S607,F401"  # noise for review purposes (B008 = FastAPI Depends)
 SYMBOL_DEF = re.compile(r"^\s*(?:async\s+)?(?:def|class)\s+([A-Za-z_]\w*)")
 
@@ -380,7 +381,7 @@ def suggest_depth(changed, risks, files):
     return "quick", "small or low-risk change"
 
 
-def ruff_hints(root, added):
+def ruff_hints(root, added, refine=False):
     """Bug-class ruff rules on changed Python files, reported only for added lines."""
     py = [p for p in added if p.endswith(".py") and Path(root, p).is_file()]
     if not py:
@@ -388,7 +389,7 @@ def ruff_hints(root, added):
     exe = shutil.which("ruff")
     if not exe:
         return "ruff not installed (pip install ruff adds a fast static pass)", []
-    p = run([exe, "check", "--isolated", "--no-cache", "--select", RUFF_SELECT, "--ignore", RUFF_IGNORE,
+    p = run([exe, "check", "--isolated", "--no-cache", "--select", RUFF_SELECT + ("," + RUFF_REFINE if refine else ""), "--ignore", RUFF_IGNORE,
              "--output-format", "json", "--exit-zero", *py], cwd=root, timeout=30)
     try:
         items = json.loads(p.stdout or "[]")
@@ -400,7 +401,7 @@ def ruff_hints(root, added):
         line = (it.get("location") or {}).get("row")
         if line in added.get(rel, {}):
             hints.append(f"- {rel}:{line} {it.get('code')} {it.get('message')}")
-    return None, hints[:40]
+    return None, hints[:60 if refine else 40]
 
 
 def callers(root, added, diff_text, rev=None):
@@ -493,7 +494,7 @@ def instruction_files(root, files):
     return sorted(found)
 
 
-def resolve(root, target, base_opt, pkg):
+def resolve(root, target, base_opt, pkg, whole=False):
     """Returns diff, commits, base, head, desc, kind, gh_info, pr_body, untracked, warnings."""
     pr_num, pr_repo = parse_pr_ref(target) if target else (None, None)
     if pr_num:
@@ -544,9 +545,10 @@ def resolve(root, target, base_opt, pkg):
     if path_filter:
         desc += f", limited to {path_filter[0]}"
         kind = "path"
-        if not diff.strip():
-            diff = "".join(no_index_diff(root, f) for f in out("ls-files", "--", *path_filter, cwd=root).splitlines())
-            desc = f"current contents of {path_filter[0]} (no pending changes; reviewed as whole files)"
+        if whole or not diff.strip():
+            listed = out("ls-files", "--", *path_filter, cwd=root).splitlines() + untracked
+            diff = "".join(no_index_diff(root, f) for f in dict.fromkeys(listed) if Path(root, f).is_file())
+            desc = f"current contents of {path_filter[0]} (reviewed as whole files)"
             kind = "path-snapshot"
     return diff, commits, mb, "WORKTREE", desc, kind, None, "", untracked, []
 
@@ -558,6 +560,7 @@ def main():
     ap.add_argument("--mode", default="review")
     ap.add_argument("--out", default="")
     ap.add_argument("--no-diff", action="store_true", help="do not print the diff inline")
+    ap.add_argument("--whole", action="store_true", help="path target: review whole files, not pending changes")
     ap.add_argument("--done", metavar="PKG", help="remove the pinned source copy of a finished review")
     a = ap.parse_args()
     if a.done:
@@ -583,7 +586,7 @@ def main():
             "run_dir": str(pkg), "collection_status": "failed"}
     (pkg / "meta.json").write_text(json.dumps(meta, indent=2))
 
-    diff, commits, base, head, desc, kind, gh, pr_body, untracked, warnings = resolve(root, target, a.base, pkg)
+    diff, commits, base, head, desc, kind, gh, pr_body, untracked, warnings = resolve(root, target, a.base, pkg, a.whole)
     committed = kind in ("pr", "range", "commit")
     src_root, source_kind = pin_source(root, head, pkg) if committed and diff.strip() else (root, "working-tree")
 
@@ -603,7 +606,7 @@ def main():
     cfg = load_config(root)
     cands = purpose_candidates(src_root, files, commits, pr_body, out("rev-parse", "--abbrev-ref", "HEAD", cwd=root))
     instr = instruction_files(src_root, files)
-    ruff_note, hints = ruff_hints(src_root, added) if files else (None, [])
+    ruff_note, hints = ruff_hints(src_root, added, a.mode in ("refine", "standards")) if files else (None, [])
     used_by = callers(src_root, added, diff) if files else []
     learnings = ""
     for lp in (Path(root, LEARNINGS),):
@@ -638,7 +641,7 @@ def main():
     L += ["", "## Project rules (read these)", *([f"- {p}" for p in instr] or ["- none"])]
     if learnings:
         L += ["", f"## Learnings from earlier reviews ({LEARNINGS}); obey them", learnings.strip()]
-    L += ["", "## Static hints: ruff bug rules on added lines (leads to check, not findings)"]
+    L += ["", "## Static hints: ruff " + ("bug and simplification" if a.mode in ("refine", "standards") else "bug") + " rules on added lines (leads to check, not findings)"]
     L += hints or [f"- {ruff_note}" if ruff_note else "- none"]
     if used_by:
         L += ["", "## Changed Python symbols and their call sites (check callers when a contract changed)", *[f"- {u}" for u in used_by]]

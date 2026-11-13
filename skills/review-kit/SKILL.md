@@ -2,7 +2,8 @@
 name: review-kit
 description: >-
   Fast, purpose-aware code review with modes review (auto depth), quick, deep (parallel adversarial
-  lenses), pr, spec, arch, test and full. Use when the user invokes $review-kit, runs any /rk:
+  lenses), pr, spec, arch, refine (Ponytail-style simplify/reuse/refactor, optional --apply), test
+  and full. Use when the user invokes $review-kit, runs any /rk:
   command, or asks for a review-kit review of a diff, branch, commit range, path or GitHub pull
   request. Checks the change against its stated purpose, verifies every finding against the code,
   and never drops a candidate without a concrete disproof. Strong on Python.
@@ -22,7 +23,7 @@ In Codex, read `references/codex.md` first. Invoke as `$review-kit <mode> [targe
 
 | Part | Values | Default |
 |---|---|---|
-| mode | `review` `quick` `deep` `pr` `spec` `arch` `test` `full` | `review` |
+| mode | `review` `quick` `deep` `pr` `spec` `arch` `refine` `test` `full` (`standards` = `refine`) | `review` |
 | target | empty (current branch + uncommitted), `A..B` / `A...B`, a sha, PR number / `#123` / PR URL, a path | current branch |
 | `--base <ref>` | base for a branch review | upstream, else `origin/HEAD`, `main`, `master` |
 | `--focus "<text>"` | area to weight heavily | none |
@@ -32,6 +33,7 @@ In Codex, read `references/codex.md` first. Invoke as `$review-kit <mode> [targe
 | `--run` | pre-approve running tests and repro scripts | off |
 | `--all` | also show minor findings | off |
 | `--quick` | in pr mode, quick depth instead of deep | off |
+| `--apply` | in refine mode, make the refactors (tests after each) | off |
 
 `review` mode uses the `suggested depth` that the context command prints (quick for small or
 low-risk changes, deep for large or risky ones). A bare PR number or URL means `pr` mode.
@@ -44,8 +46,11 @@ purpose source exists at all. Headless runs never ask: they take the default and
 ## 1. Context: one command
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/scripts/collect.py" --mode <mode> [--target "<target>"] [--base <ref>]
+python3 "${CLAUDE_SKILL_DIR}/scripts/collect.py" --mode <mode> [--target "<target>"] [--base <ref>] [--whole]
 ```
+
+In refine mode with a file or folder target, pass `--whole`: it reviews the whole current files,
+not only their pending changes, and adds ruff's simplification rules to the hints.
 
 It prints everything the review needs and writes nothing inside the repository: size and risk
 signals, suggested depth, files, commits, PR description, purpose documents, project rule files,
@@ -76,8 +81,9 @@ only when you dispatch subagents (it goes in their prompt) or the mode is `spec`
 | pr | deep (quick with `--quick`) + comment triage | as deep, plus `references/pr.md` |
 | spec | 2 parallel subagents | `contract` (all requirements), `correctness` (requirement areas only) |
 | arch | 2 parallel subagents | `architecture`, `adversarial` (approach focus) |
+| refine | inline up to ~1500 lines; else parallel `refine` subagents, one per module group | `references/refine.md` |
 | test | `references/testing.md` | `contract` (tests part), then run tests |
-| full | 5 parallel subagents | deep's four + `architecture`, then offer test |
+| full | 6 parallel subagents | deep's four + `architecture` + `refine`, then offer test |
 
 **Quick (inline).** You already hold the diff. If a changed function's body or callers matter and
 are not in the diff, read them (parallel Read calls, one focused check per named risk). Take the
@@ -92,6 +98,12 @@ real defect here.
 own opinion of the code. Each lens returns its candidates as JSON in its final message; nothing is
 written to disk. With `--second-model`, start it in the same message (`references/second-model.md`).
 If you cannot spawn subagents, run the lenses yourself in sequence and say "lenses ran inline".
+
+**Refine.** Read `references/refine.md` and follow it: map the code and the helpers the codebase
+already has, then delete, reuse, merge, simplify and restructure, each with a patch and the lines
+it saves. Bugs you notice come first, as findings. Its report format is in refine.md. With
+`--apply` (or "apply 2 and 4"), it is the one mode allowed to edit files, one refactor at a time,
+with the closest test after each.
 
 ## 3. Verify (no disproof, no drop)
 
@@ -138,7 +150,8 @@ severity order, run the closest test after each, and show the evidence.
 - **Severity is impact; confidence is certainty.** A rare trigger lowers neither below what the
   code supports; see verification.md.
 - **Say what you did not check**: lenses not run, tests not run, requirements you couldn't verify.
-- **Read-only.** Never edit files, move HEAD or change the index. Repro scripts and test output go
+- **Read-only** (except refine `--apply` and explicit fix requests). Never edit files, move HEAD
+  or change the index. Repro scripts and test output go
   under `PKG` only, run with `--run` or after the user approves.
 - **Learnings.** When the user rejects a finding with a reason or says "remember …", append one
   line to `<repo>/.review-kit/learnings.md` (create it, and add `/.review-kit/` to
