@@ -1,32 +1,53 @@
 #!/usr/bin/env python3
-"""Build a review package for review-kit.
+"""Gather everything a review needs in one call, and print it.
 
-Resolves the review target (branch, range, commit, PR, path), writes the diff with
-10 lines of context, file stats, commits, purpose-document candidates and project
-instruction files into one directory, and prints that directory's path on the last
-line of output.
+Resolves the target (branch + uncommitted, range, commit, PR, path), writes the numbered diff
+and metadata to a scratch folder OUTSIDE the repository, and prints a compact context block:
+size, risk signals, suggested depth, files, commits, purpose documents, project rules and
+learnings, static hints (ruff bug rules on changed Python lines), callers of changed Python
+symbols, and the numbered diff itself when it is small enough to read inline.
 
-Usage: collect.py [--mode M] [--target T] [--base REF] [--out DIR]
+Usage:
+  collect.py [--target T] [--base REF] [--mode M] [--no-diff]   print context; last line: PKG=<dir>
+  collect.py --done PKG                                         remove a pinned source copy
 
-By default the package is a new run folder: <repo>/.review-kit/runs/<stamp>-<mode>-<target>/.
+Nothing is written inside the repository. Exit code is nonzero on any collection failure:
+never treat a failure as an empty diff.
 """
 import argparse
 import datetime as _dt
 import json
 import os
 import re
+import secrets
+import shutil
 import subprocess
 import sys
-import shutil
-import hashlib
+import tempfile
 from pathlib import Path
 
 CONTEXT = "-U10"
-INSTRUCTION_FILES = ["CLAUDE.md", "AGENTS.md", "CONTRIBUTING.md", ".editorconfig",
-                     "REVIEW.md", ".github/copilot-instructions.md"]
+INLINE_DIFF_MAX_LINES = 1500
+INSTRUCTION_FILES = ["CLAUDE.md", "AGENTS.md", "REVIEW.md", "CONTRIBUTING.md",
+                     ".github/copilot-instructions.md"]
+LEARNINGS = ".review-kit/learnings.md"
 ADR_DIRS = ["docs/adr", "docs/adrs", "docs/decisions", "doc/adr", "adr", "adrs",
             "Documentation/Decisions", "docs/architecture/decisions", "architecture/decisions"]
 SPEC_PATTERNS = re.compile(r"(spec|plan|design|rfc|prd|requirements?|adr|decision)", re.I)
+TEST_PATH = re.compile(r"(\.spec\.|\.test\.|_test\.|(^|/)test_[^/]*\.py$|(^|/)tests?/|Tests?/|\.Tests\b|Tests?\.cs$|conftest\.py$)")
+
+# Risk signals: categories of change where a missed bug is expensive. Matched on added lines.
+RISK = {
+    "auth": r"\b(auth|permission|is_admin|role|tenant|owner_id|login|session|jwt|token|csrf)\b",
+    "money": r"\b(amount|price|charge|refund|invoice|balance|payout|payment|currency|cents|fee)\b",
+    "data": r"\b(DELETE|UPDATE|INSERT|ALTER\s+TABLE|DROP|migration|bulk_|transaction|atomic|commit\(\))",
+    "concurrency": r"\b(async\s+def|await|asyncio|thread|Lock|Semaphore|multiprocessing|celery|queue|retry|webhook|idempot)",
+    "injection": r"(subprocess|os\.system|eval\(|exec\(|pickle|yaml\.load|\.execute\(|raw\(|f\"SELECT|f'SELECT|shell=True|innerHTML|mark_safe|\|safe)",
+    "secrets": r"(secret|password|api_key|private_key|BEGIN [A-Z ]*PRIVATE KEY)",
+}
+RUFF_SELECT = "F,B,E9,PLE,ASYNC,S,BLE,DTZ,RUF006,RUF012,PLW0120,PLW0602,PLW1508,PLW1510,PLW3301,TRY002"
+RUFF_IGNORE = "S101,S311,B008,B904,S603,S607,F401"  # noise for review purposes (B008 = FastAPI Depends)
+SYMBOL_DEF = re.compile(r"^\s*(?:async\s+)?(?:def|class)\s+([A-Za-z_]\w*)")
 
 
 def run(cmd, cwd=None, check=False, input_text=None, timeout=120):
@@ -68,73 +89,67 @@ def empty_tree(root):
 
 
 def source_clean(root):
-    return not git("status", "--porcelain", "--untracked-files=all", "--", ".", EXCLUDE,
-                   cwd=root, check=True).stdout.strip()
+    return not git("status", "--porcelain", "--untracked-files=all", cwd=root,
+                   check=True).stdout.strip()
 
 
-def source_fingerprint(root, package=None):
-    """Bind live-source results to HEAD, tracked contents and non-ignored new files."""
-    exclusions = [EXCLUDE]
-    if package is not None:
-        try:
-            relative = Path(package).resolve().relative_to(Path(root).resolve())
-            exclusions.append(f":(literal,exclude){relative.as_posix()}")
-        except ValueError:
-            pass
-    digest = hashlib.sha256()
-    digest.update(commit_ref(root, "HEAD").encode())
-    digest.update(git("diff", "--binary", "HEAD", "--", ".", *exclusions,
-                      cwd=root, check=True).stdout.encode())
-    paths = git("ls-files", "-z", "--others", "--exclude-standard", "--", ".", *exclusions,
-                cwd=root, check=True).stdout.split("\0")
-    for name in sorted(p for p in paths if p):
-        path = Path(root, name)
-        digest.update(json.dumps(name).encode() + b"\0")
-        if path.is_symlink():
-            content = os.readlink(path).encode()
-            digest.update(b"symlink\0" + hashlib.sha256(content).digest())
-        else:
-            file_digest = hashlib.sha256()
-            with path.open("rb") as stream:
-                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                    file_digest.update(chunk)
-            digest.update(b"file\0" + file_digest.digest())
-    return digest.hexdigest()
-
-
-def validate_source(meta, package):
-    """Source may only supply reusable evidence while it still matches collection."""
+def validate_source(meta, package=None):
+    """Raise if the source the review read no longer matches the reviewed revision."""
     root = meta["repo_root"]
-    kind = meta.get("source_kind")
-    if kind == "working-tree":
-        if not meta.get("source_fingerprint") or source_fingerprint(root, package) != meta["source_fingerprint"]:
-            raise ValueError("live source changed or this older run has no source fingerprint")
-    elif kind in ("pinned-worktree", "checkout-at-reviewed-commit"):
-        if (not Path(root).is_dir() or commit_ref(root, "HEAD") != meta["reviewed_commit"] or
-                not source_clean(root)):
-            raise ValueError("reviewed source is missing or changed")
-    else:
-        raise ValueError("unknown source kind")
+    if not Path(root).is_dir():
+        raise ValueError("reviewed source is gone")
+    if meta.get("source_kind") == "pinned-copy" and commit_ref(root, "HEAD") != meta["reviewed_commit"]:
+        raise ValueError("pinned source copy moved")
+    if meta.get("source_kind") == "working-tree" and meta.get("head_at_collection") and \
+            commit_ref(root, "HEAD") != meta["head_at_collection"]:
+        raise ValueError("checkout moved since the review")
 
 
-def snapshot(root, head, name):
-    """Pin context reads to `head` without touching the caller's HEAD, index or files.
+def scratch_home():
+    return Path(os.environ.get("RK_SCRATCH") or Path(tempfile.gettempdir()) / "review-kit")
 
-    Returns (source_root, source_kind). When the checkout already sits at `head` with no
-    tracked or untracked changes, it is the reviewed revision, so no copy is made. Otherwise a detached
-    worktree is created under the git dir (never inside the working tree, so test runners,
-    compilers and searches in the user's repo don't pick it up). It is removed when the run
-    is reported (state.py) or by the next run's cleanup.
-    """
-    clean = source_clean(root)
-    if commit_ref(root, "HEAD") == head and clean:
+
+def prune_old(home, days=7):
+    """Old scratch folders are disposable; remove them (and their pinned copies) quietly."""
+    if not home.is_dir():
+        return
+    cutoff = _dt.datetime.now().timestamp() - days * 86400
+    for d in home.iterdir():
+        try:
+            if d.is_dir() and d.stat().st_mtime < cutoff:
+                done(d, quiet=True)
+                shutil.rmtree(d, ignore_errors=True)
+        except OSError:
+            pass
+
+
+def pin_source(root, head, pkg):
+    """Use the checkout if it already is the reviewed commit; else a detached copy in PKG/src."""
+    if commit_ref(root, "HEAD") == head and source_clean(root):
         return root, "checkout-at-reviewed-commit"
-    dest = worktree_home(root) / name
-    if dest.exists():
-        dest = Path(f"{dest}-{_dt.datetime.now().strftime('%H%M%S%f')}")
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    git("worktree", "add", "--detach", str(dest), head, cwd=root, check=True)
-    return str(dest), "pinned-worktree"
+    dest = pkg / "src"
+    git("worktree", "add", "--detach", "--quiet", str(dest), head, cwd=root, check=True)
+    return str(dest), "pinned-copy"
+
+
+def done(pkg, quiet=False):
+    """Remove the pinned copy of a finished review. Never forced: an edited copy is kept."""
+    pkg = Path(pkg)
+    try:
+        meta = json.loads((pkg / "meta.json").read_text())
+    except (OSError, ValueError):
+        return "no meta"
+    src = Path(meta.get("repo_root", ""))
+    if meta.get("source_kind") != "pinned-copy" or not src.is_dir():
+        return "nothing to remove"
+    if src.resolve().parent != pkg.resolve():
+        return "refused: copy is not inside the scratch folder"
+    r = git("worktree", "remove", str(src), cwd=meta["original_repo_root"])
+    git("worktree", "prune", cwd=meta["original_repo_root"])
+    msg = "removed" if r.returncode == 0 else f"kept: {r.stderr.strip()}"
+    if not quiet:
+        print(msg)
+    return msg
 
 
 def no_index_diff(root, path):
@@ -145,29 +160,24 @@ def no_index_diff(root, path):
 
 
 def default_base(root):
-    for cand in ("origin/HEAD",):
-        ref = out("symbolic-ref", "--quiet", "--short", "refs/remotes/" + cand, cwd=root)
-        if ref:
-            return ref
+    ref = out("symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD", cwd=root)
+    if ref:
+        return ref
     for cand in ("main", "master", "origin/main", "origin/master", "develop"):
         if git("rev-parse", "--verify", "--quiet", cand + "^{commit}", cwd=root).returncode == 0:
             return cand
     return None
 
 
-def untracked_diff(root, paths_filter=None, package=None):
-    files = [f for f in out("ls-files", "--others", "--exclude-standard", cwd=root).splitlines()
-             if not f.startswith(RK_DIR + "/")]
+def untracked_diff(root, paths_filter=None):
+    files = out("ls-files", "--others", "--exclude-standard", cwd=root).splitlines()
+    files = [f for f in files if not f.startswith(".review-kit/")]
     if paths_filter:
         files = [f for f in files if any(f == p or f.startswith(p.rstrip("/") + "/") for p in paths_filter)]
-    if package is not None:
-        package = Path(package).resolve()
-        files = [f for f in files if package not in Path(root, f).resolve().parents]
     chunks = []
     for f in files:
-        full = Path(root, f)
         try:
-            if full.stat().st_size > 400_000:
+            if Path(root, f).stat().st_size > 400_000:
                 continue
         except OSError:
             continue
@@ -175,45 +185,9 @@ def untracked_diff(root, paths_filter=None, package=None):
     return "".join(chunks), files
 
 
-RK_DIR = ".review-kit"
-EXCLUDE = f":(exclude){RK_DIR}"
-DEFAULT_CONFIG = {"html": "auto", "keep_runs": 50, "keep_source": False}
-HTML_MODES = ("deep", "full", "pr", "arch")
-FOLDER_README = """# .review-kit
-
-Created by the review-kit (rk) Claude Code plugin. Each review run gets a folder under `runs/`
-holding everything about that review: the diff, the purpose contract, lens candidates, verified
-findings, test results, the final report (`report.md`) and the HTML walkthrough (`review.html`).
-`state.json` records which stages finished, so `/rk:resume` (or any agent session) can pick up an
-interrupted run. `latest` names the most recent run.
-
-This folder is listed in `.git/info/exclude`, so it never shows up in `git status`, commits or
-reviewed diffs. To share reviews through git instead, remove that line and commit the folder.
-
-Reviews of a commit, range or PR that is not your current clean checkout read source from a
-temporary worktree under `.git/review-kit/worktrees/`. It is removed when the run finishes.
-
-Settings: `config.json` here (or `~/.review-kit/config.json` for all repos), for example
-`{"html": "always", "keep_runs": 50, "keep_source": false}`.
-- `html`: "auto" (deep, full, pr and arch runs; others with --html; the default) | "always" | "flag" (only with --html) | "never"
-- `keep_runs`: finished runs beyond this number are deleted, oldest first, except retained/dirty sources
-- `keep_source`: keep the temporary source worktree after a run finishes
-
-Automatic cleanup honors each run's saved keep_source setting and never force-deletes dirty sources.
-"""
-
-
-def html_decision(setting, mode):
-    if setting == "never":
-        return "no (config html=never; this wins even over --html)"
-    if setting == "always" or (setting == "auto" and mode in HTML_MODES):
-        return "yes (skip only if the user passed --no-html)"
-    return "only if the user passed --html"
-
-
 def load_config(root):
-    cfg = dict(DEFAULT_CONFIG)
-    for p in (Path.home() / RK_DIR / "config.json", Path(root) / RK_DIR / "config.json"):
+    cfg = {"html": "auto"}
+    for p in (Path.home() / ".review-kit" / "config.json", Path(root) / ".review-kit" / "config.json"):
         try:
             data = json.loads(p.read_text())
         except (OSError, ValueError):
@@ -223,124 +197,13 @@ def load_config(root):
     return cfg
 
 
-def git_common_dir(root):
-    d = out("rev-parse", "--git-common-dir", cwd=root)
-    return (Path(d) if Path(d).is_absolute() else Path(root, d)).resolve()
-
-
-def worktree_home(root):
-    return git_common_dir(root) / "review-kit" / "worktrees"
-
-
-def ensure_excluded(root):
-    """Keep .review-kit out of git status and reviewed diffs without touching tracked files."""
-    ex = git_common_dir(root) / "info" / "exclude"
-    try:
-        ex.parent.mkdir(parents=True, exist_ok=True)
-        txt = ex.read_text() if ex.exists() else ""
-        if f"/{RK_DIR}/" not in txt.split():
-            ex.write_text(txt + ("\n" if txt and not txt.endswith("\n") else "") + f"/{RK_DIR}/\n")
-    except OSError:
-        pass
-
-
-def remove_source(meta_path, honor_keep=True):
-    """Remove a run's temporary worktree. Returns a short status string.
-
-    Never forced: a worktree with local changes is kept. `honor_keep=False` is for an explicit
-    user request (state.py --cleanup) to remove a copy kept by `keep_source`.
-    """
-    try:
-        meta = json.loads(Path(meta_path).read_text())
-    except (OSError, ValueError):
-        return "no meta"
-    if not isinstance(meta, dict):
-        return "no meta"
-    src = meta.get("repo_root")
-    if meta.get("source_kind") != "pinned-worktree" or meta.get("source_removed") or not src:
-        return "nothing to remove"
-    if honor_keep and (meta.get("config") or {}).get("keep_source"):
-        return "kept: keep_source is enabled"
-    home = worktree_home(meta.get("original_repo_root", src)).resolve()
-    if home not in Path(src).resolve().parents:
-        return "refused: worktree is not under .git/review-kit/worktrees"
-    args = ["worktree", "remove", src]
-    r = git(*args, cwd=meta["original_repo_root"])
-    if r.returncode and Path(src).exists():
-        return f"kept: {r.stderr.strip() or 'git worktree remove failed'}"
-    git("worktree", "prune", cwd=meta["original_repo_root"])
-    meta["source_removed"] = True
-    Path(meta_path).write_text(json.dumps(meta, indent=2))
-    return "removed"
-
-
-def cleanup_runs(root, keep, current=None):
-    """Delete finished runs beyond `keep`; remove leftover worktrees of finished or stale runs."""
-    runs = Path(root, RK_DIR, "runs")
-    if not runs.is_dir():
-        return
-    finished, now = [], _dt.datetime.now().timestamp()
-    for d in sorted(p for p in runs.iterdir() if p.is_dir() and p != current):
-        try:
-            st = json.loads((d / "state.json").read_text())
-        except (OSError, ValueError):
-            continue
-        # Corrupt/partially-written progress is unknown, never permission to remove source.
-        stages = st.get("stages_done", []) if isinstance(st, dict) else None
-        if (not isinstance(stages, list) or
-                any(s not in ("packaged", "contract", "lenses", "tests", "verified", "reported") for s in stages)):
-            continue
-        done = "reported" in stages
-        if done:
-            finished.append(d)
-        progress = d / "state.json"
-        last_activity = max(d.stat().st_mtime, progress.stat().st_mtime if progress.exists() else 0)
-        stale = now - last_activity > 86400
-        if (d / "meta.json").exists() and (done or stale):
-            remove_source(d / "meta.json")
-    try:
-        keep = int(keep)
-    except (TypeError, ValueError):
-        return
-    for d in finished[:max(0, len(finished) - keep)]:
-        result = remove_source(d / "meta.json")
-        if result in ("removed", "nothing to remove"):
-            shutil.rmtree(d, ignore_errors=True)
-
-
-def new_run_dir(root, stamp, mode, label, cfg):
-    base = Path(root, RK_DIR)
-    runs = base / "runs"
-    runs.mkdir(parents=True, exist_ok=True)
-    ensure_excluded(root)
-    if not (base / "README.md").exists():
-        (base / "README.md").write_text(FOLDER_README)
-    slug = re.sub(r"[^A-Za-z0-9]+", "-", label or "branch").strip("-").lower()[:40] or "branch"
-    name = f"{stamp}-{re.sub(r'[^a-z]+', '', mode.lower()) or 'review'}-{slug}"
-    pkg, n = runs / name, 1
-    while True:
-        try:
-            pkg.mkdir()
-            break
-        except FileExistsError:
-            n += 1
-            pkg = runs / f"{name}-{n}"
-    # Clean up after creating this run's folder, so a just-pruned name is never reused.
-    cleanup_runs(root, cfg.get("keep_runs", 50), current=pkg)
-    (base / "latest").write_text(str(pkg.relative_to(root)) + "\n")
-    return pkg
-
-
 def parse_pr_ref(target):
-    m = re.fullmatch(r"#?(\d+)", target.strip())
+    m = re.fullmatch(r"(?i)(?:pr\s*)?#?(\d+)", target.strip())
     if m:
         return m.group(1), None
     m = re.search(r"github\.com/([^/]+)/([^/]+)/pull/(\d+)", target)
     if m:
         return m.group(3), f"{m.group(1)}/{m.group(2)}"
-    m = re.fullmatch(r"(?i)pr\s*#?(\d+)", target.strip())
-    if m:
-        return m.group(1), None
     return None, None
 
 
@@ -357,9 +220,7 @@ def gh_json(args, cwd):
 def collect_pr(root, num, repo_slug, pkg):
     fields = ("number,title,body,state,isDraft,author,baseRefName,headRefName,headRefOid,"
               "baseRefOid,url,closingIssuesReferences,labels,files,commits,reviewDecision")
-    args = ["pr", "view", num, "--json", fields]
-    if repo_slug:
-        args += ["--repo", repo_slug]
+    args = ["pr", "view", num, "--json", fields] + (["--repo", repo_slug] if repo_slug else [])
     pr, err = gh_json(args, root)
     if not isinstance(pr, dict):
         die(f"could not read PR {num} with gh: {err}. Check `gh auth status`.")
@@ -370,10 +231,8 @@ def collect_pr(root, num, repo_slug, pkg):
     if repo_slug:
         owner, name = repo_slug.split("/")
 
-    # Fetch exact commits from the requested repository, never a different local PR.
     base, head = pr.get("baseRefOid"), pr.get("headRefOid")
-    if not all(isinstance(v, str) and re.fullmatch(r"[0-9a-fA-F]{40,64}", v)
-               for v in (base, head)):
+    if not all(isinstance(v, str) and re.fullmatch(r"[0-9a-fA-F]{40,64}", v) for v in (base, head)):
         die("PR metadata is missing valid base/head commit IDs")
     remote = f"https://github.com/{repo_slug}.git" if repo_slug else "origin"
     missing = [ref for ref in (base, head)
@@ -381,22 +240,19 @@ def collect_pr(root, num, repo_slug, pkg):
     if missing:
         git("fetch", "--quiet", "--no-tags", remote, *missing, cwd=root, check=True)
     base, head = commit_ref(root, base), commit_ref(root, head)
-    diff = git("diff", CONTEXT, f"{base}...{head}", "--", ".", EXCLUDE, cwd=root, check=True).stdout
-    # Inline anchors come from GitHub, and must describe the same head we pinned.
-    a = ["pr", "diff", num] + (["--repo", repo_slug] if repo_slug else [])
-    raw = run(["gh", *a], cwd=root, check=True).stdout
-    latest_args = ["pr", "view", num, "--json", "headRefOid,baseRefOid"]
-    if repo_slug:
-        latest_args += ["--repo", repo_slug]
-    latest, err = gh_json(latest_args, root)
+    diff = git("diff", CONTEXT, f"{base}...{head}", cwd=root, check=True).stdout
+    # Inline comment anchors come from GitHub's diff, which must describe the same head.
+    raw = run(["gh", "pr", "diff", num] + (["--repo", repo_slug] if repo_slug else []),
+              cwd=root, check=True).stdout
+    latest, err = gh_json(["pr", "view", num, "--json", "headRefOid,baseRefOid"]
+                          + (["--repo", repo_slug] if repo_slug else []), root)
     if not isinstance(latest, dict) or latest.get("headRefOid") != head or latest.get("baseRefOid") != base:
         die(f"PR changed or could not be rechecked while collecting: {err or 'commit mismatch'}")
     if diff.strip() and not raw.strip():
         die("GitHub returned an empty diff for a nonempty PR")
     (pkg / "pr-github.diff").write_text(raw)
-    warnings = []
 
-    comments = {"threads": [], "issue_comments": [], "reviews": []}
+    warnings, comments = [], {"threads": [], "issue_comments": [], "reviews": []}
     if owner and name:
         q = """query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(number:$p){
           reviewThreads(first:100){nodes{isResolved isOutdated path line comments(first:30){nodes{
@@ -409,30 +265,28 @@ def collect_pr(root, num, repo_slug, pkg):
             comments["threads"] = prq["reviewThreads"]["nodes"]
             comments["reviews"] = prq["reviews"]["nodes"]
         except (TypeError, KeyError):
-            warnings.append("GraphQL review context unavailable; REST fallback lacks resolved-thread state and review summaries")
+            warnings.append("GraphQL review context unavailable; REST fallback lacks resolved-thread state")
             rest, rest_err = gh_json(["api", f"repos/{owner}/{name}/pulls/{num}/comments", "--paginate"], root)
             if not isinstance(rest, list):
                 warnings.append(f"Review threads unavailable: {rest_err or 'invalid response'}")
                 rest = []
-            comments["threads"] = [{"isResolved": None, "comments": {"nodes": [c]}} for c in (rest or [])]
+            comments["threads"] = [{"isResolved": None, "comments": {"nodes": [c]}} for c in rest]
         ic, ic_err = gh_json(["api", f"repos/{owner}/{name}/issues/{num}/comments", "--paginate"], root)
         if not isinstance(ic, list):
             warnings.append(f"Issue comments unavailable: {ic_err or 'invalid response'}")
             ic = []
         comments["issue_comments"] = ic
-    if not owner or not name:
+    else:
         warnings.append("Repository identity unavailable; comment triage incomplete")
     comments["warnings"] = warnings
     (pkg / "pr-comments.json").write_text(json.dumps(comments, indent=2))
-    commits = "\n".join(f"{c.get('oid','')[:10]} {c.get('messageHeadline','')}" for c in pr.get("commits", []))
-    desc = f"PR #{num}: {pr.get('title','')} ({pr.get('url','')})"
-    return diff, commits, base, head, desc, {"owner": owner, "repo": name, "pr": int(num)}
+    commits = "\n".join(f"{c.get('oid', '')[:10]} {c.get('messageHeadline', '')}" for c in pr.get("commits", []))
+    desc = f"PR #{num}: {pr.get('title', '')} ({pr.get('url', '')})"
+    return diff, commits, base, head, desc, {"owner": owner, "repo": name, "pr": int(num)}, pr.get("body") or "", warnings
 
 
 def numstat(diff_text):
-    files = []
-    cur = None
-    in_hunk = False
+    files, cur, in_hunk = [], None, False
     for line in diff_text.splitlines():
         if line.startswith("diff --git"):
             in_hunk = False
@@ -454,42 +308,128 @@ def numstat(diff_text):
             cur["status"] = "deleted"
         elif line.startswith("rename to "):
             cur["status"] = "renamed"
-        elif line.startswith("+") and not line.startswith("+++"):
-            cur["added"] += 1
-        elif line.startswith("-") and not line.startswith("---"):
-            cur["deleted"] += 1
     if cur:
         files.append(cur)
-    # git diff --no-index on /dev/null names the file "b/<path>" with a/dev/null source
-    for f in files:
+    for f in files:  # `git diff --no-index /dev/null x` names the file b/x
         f["path"] = f["path"].replace("dev/null", "").lstrip("/") or f["path"]
     return files
 
 
 def numbered_diff(diff_text):
     """Prefix every hunk line with its line number in the NEW file (blank for removed lines)."""
-    out, new_ln = [], None
+    lines, new_ln = [], None
     for raw in diff_text.splitlines():
         m = re.match(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", raw)
         if raw.startswith("diff --git"):
             new_ln = None
-            out.append(raw)
+            lines.append(raw)
         elif m:
             new_ln = int(m.group(1))
-            out.append(raw)
+            lines.append(raw)
         elif new_ln is None or raw.startswith("\\"):
-            out.append(raw)
+            lines.append(raw)
         elif raw.startswith("-"):
-            out.append(f"{'':>6} {raw}")
+            lines.append(f"{'':>6} {raw}")
         else:
-            out.append(f"{new_ln:>6} {raw}")
+            lines.append(f"{new_ln:>6} {raw}")
             new_ln += 1
-    return "\n".join(out) + "\n"
+    return "\n".join(lines) + "\n"
+
+
+def added_lines(diff_text):
+    """{path: {new_line_number: text}} for every added line."""
+    result, cur, new_ln = {}, None, None
+    for raw in diff_text.splitlines():
+        if raw.startswith("diff --git"):
+            m = re.match(r"diff --git a/(.*?) b/(.*)$", raw)
+            cur, new_ln = (m.group(2).replace("dev/null", "").lstrip("/") if m else None), None
+            continue
+        m = re.match(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", raw)
+        if m:
+            new_ln = int(m.group(1))
+            continue
+        if new_ln is None or cur is None or raw.startswith("\\") or raw.startswith("-"):
+            continue
+        if raw.startswith("+"):
+            result.setdefault(cur, {})[new_ln] = raw[1:]
+        new_ln += 1
+    return result
+
+
+def removed_symbols(diff_text):
+    names = set()
+    for raw in diff_text.splitlines():
+        if raw.startswith("-") and not raw.startswith("---"):
+            m = SYMBOL_DEF.match(raw[1:])
+            if m:
+                names.add(m.group(1))
+    return names
+
+
+def risk_signals(added):
+    text = "\n".join(t for lines in added.values() for t in lines.values())
+    return [k for k, pat in RISK.items() if re.search(pat, text, re.I if k != "data" else 0)]
+
+
+def suggest_depth(changed, risks, files):
+    code = [f for f in files if not f["path"].lower().endswith((".md", ".rst", ".txt", ".lock"))]
+    if changed > 400 or len(code) > 12:
+        return "deep", "large change"
+    if len(risks) >= 2 and changed > 120:
+        return "deep", f"risky areas ({', '.join(risks)}) in a medium-size change"
+    return "quick", "small or low-risk change"
+
+
+def ruff_hints(root, added):
+    """Bug-class ruff rules on changed Python files, reported only for added lines."""
+    py = [p for p in added if p.endswith(".py") and Path(root, p).is_file()]
+    if not py:
+        return None, []
+    exe = shutil.which("ruff")
+    if not exe:
+        return "ruff not installed (pip install ruff adds a fast static pass)", []
+    p = run([exe, "check", "--isolated", "--no-cache", "--select", RUFF_SELECT, "--ignore", RUFF_IGNORE,
+             "--output-format", "json", "--exit-zero", *py], cwd=root, timeout=30)
+    try:
+        items = json.loads(p.stdout or "[]")
+    except ValueError:
+        return f"ruff failed: {p.stderr.strip()[:200]}", []
+    hints = []
+    for it in items:
+        rel = os.path.relpath(it.get("filename", ""), root)
+        line = (it.get("location") or {}).get("row")
+        if line in added.get(rel, {}):
+            hints.append(f"- {rel}:{line} {it.get('code')} {it.get('message')}")
+    return None, hints[:40]
+
+
+def callers(root, added, diff_text, rev=None):
+    """Where changed/removed Python symbols are used outside their own definition."""
+    names = set(removed_symbols(diff_text))
+    for path, lines in added.items():
+        if path.endswith(".py"):
+            names.update(m.group(1) for t in lines.values() if (m := SYMBOL_DEF.match(t)))
+    names = sorted(n for n in names if not n.startswith("__") and len(n) > 3 and n not in ("main", "test"))
+    report = []
+    for n in names[:20]:
+        if n.startswith("test_"):
+            continue
+        args = ["grep", "-n", "-I", "-w", "-e", n] + ([rev] if rev else []) + ["--", "*.py"]
+        hits = []
+        for line in out(*args, cwd=root).splitlines():
+            loc = line.split(":", 2) if not rev else line.split(":", 3)[1:]
+            if len(loc) < 3 or SYMBOL_DEF.match(loc[2]) or loc[2].lstrip().startswith(("#", "import ", "from ")):
+                continue
+            hits.append(f"{loc[0]}:{loc[1]}")
+        tag = " (removed in this change)" if n in removed_symbols(diff_text) and not any(
+            SYMBOL_DEF.match(t) and SYMBOL_DEF.match(t).group(1) == n for ls in added.values() for t in ls.values()) else ""
+        report.append(f"{n}{tag}: " + (", ".join(hits[:6]) + (f" (+{len(hits) - 6} more)" if len(hits) > 6 else "")
+                                     if hits else "no callers found"))
+    return report
 
 
 def purpose_candidates(root, files, commits_text, pr_body, branch):
-    cands = []
-    seen = set()
+    cands, seen = [], set()
 
     def add(path, why, rank):
         if path in seen:
@@ -508,240 +448,214 @@ def purpose_candidates(root, files, commits_text, pr_body, branch):
     for f in files:
         if f["path"].lower().endswith((".md", ".mdx", ".rst", ".adoc")) and f["status"] != "deleted":
             add(f["path"], "changed in this diff", 1)
-
     text = " ".join([commits_text or "", pr_body or "", branch or ""]).lower()
     tokens = set(re.findall(r"[a-z][a-z0-9_-]{3,}", text))
     changed_dirs = {str(Path(f["path"]).parent) for f in files}
-    changed_words = set()
-    for f in files:
-        changed_words.update(w for w in re.split(r"[/._-]", f["path"].lower()) if len(w) > 3)
-
+    changed_words = {w for f in files for w in re.split(r"[/._-]", f["path"].lower()) if len(w) > 3}
+    haystack = " ".join(f["path"].lower() for f in files) + " " + text
     adr_dirs = [d for d in ADR_DIRS if Path(root, d).is_dir()]
-    adr_file = Path(root, ".adr-dir")
-    if adr_file.is_file():
-        adr_dirs.append(adr_file.read_text().strip())
+    if Path(root, ".adr-dir").is_file():
+        adr_dirs.append(Path(root, ".adr-dir").read_text().strip())
     for d in adr_dirs:
         for p in sorted(Path(root, d).rglob("*")):
             if p.suffix.lower() not in (".md", ".rst", ".adoc") or not p.is_file():
                 continue
             rel = str(p.relative_to(root))
-            name_words = set(w for w in re.split(r"[/._-]", p.stem.lower()) if len(w) > 3)
+            name_words = {w for w in re.split(r"[/._-]", p.stem.lower()) if len(w) > 3}
             num = re.match(r"(?:adr-?)?(0*(\d+))", p.stem.lower())
             mentioned = rel.lower() in text or p.stem.lower() in text or \
                 (num and (re.search(rf"(adr|decision|record)[-# ]*0*{num.group(2)}\b", text)
                           or (len(num.group(1)) >= 3 and re.search(rf"\b{num.group(1)}\b", text))))
-            haystack = " ".join(f["path"].lower() for f in files) + " " + text
             if mentioned:
                 add(rel, "ADR referenced in commits/PR/branch", 2)
             elif any(len(w) > 4 and not w.isdigit() and w in haystack for w in name_words):
                 add(rel, "ADR whose title matches the changed area", 3)
-
-    tracked = out("ls-files", "*.md", cwd=root).splitlines()
-    for rel in tracked:
+    for rel in out("ls-files", "*.md", cwd=root).splitlines():
         stem = Path(rel).stem.lower()
-        if not SPEC_PATTERNS.search(rel):
+        if not SPEC_PATTERNS.search(rel) and Path(rel).parent.name not in ("docs", "doc"):
             continue
         if rel.lower() in text or (len(stem) > 4 and stem in text):
-            add(rel, "spec/plan referenced in commits/PR/branch", 3)
+            add(rel, "doc referenced in commits/PR/branch", 3)
         elif str(Path(rel).parent) in changed_dirs:
-            add(rel, "spec/plan next to changed code", 4)
-        elif "superpowers" in rel or rel.startswith(("specs/", "docs/specs/", "docs/plans/")):
-            words = set(w for w in re.split(r"[/._-]", stem) if len(w) > 3)
-            if words & (changed_words | tokens):
-                add(rel, "plan/spec matching the changed area", 4)
+            add(rel, "doc next to changed code", 4)
+        elif {w for w in re.split(r"[/._-]", stem) if len(w) > 3} & (changed_words | tokens):
+            add(rel, "doc matching the changed area", 4)
     cands.sort(key=lambda c: c["rank"])
-    return cands[:12]
+    return cands[:8]
 
 
 def instruction_files(root, files):
-    found = []
     dirs = {""}
     for f in files:
         parts = Path(f["path"]).parts[:-1]
-        for i in range(len(parts) + 1):
-            dirs.add(str(Path(*parts[:i])) if i else "")
-    for d in sorted(dirs):
-        for name in INSTRUCTION_FILES:
-            p = Path(root, d, name)
-            if p.is_file():
-                found.append(str(p.relative_to(root)))
-    return sorted(set(found))
+        dirs.update(str(Path(*parts[:i])) if i else "" for i in range(len(parts) + 1))
+    found = {str(Path(d, n)) for d in dirs for n in INSTRUCTION_FILES if Path(root, d, n).is_file()}
+    return sorted(found)
+
+
+def resolve(root, target, base_opt, pkg):
+    """Returns diff, commits, base, head, desc, kind, gh_info, pr_body, untracked, warnings."""
+    pr_num, pr_repo = parse_pr_ref(target) if target else (None, None)
+    if pr_num:
+        diff, commits, base, head, desc, gh, body, warn = collect_pr(root, pr_num, pr_repo, pkg)
+        return diff, commits, base, head, desc, "pr", gh, body, [], warn
+    if target and ".." in target:
+        parts = re.split(r"(\.\.\.?)", target)
+        if len(parts) != 3:
+            die("invalid commit range")
+        left, dots, right = parts
+        base, head = commit_ref(root, left or "HEAD"), commit_ref(root, right or "HEAD")
+        diff = git("diff", CONTEXT, base + dots + head, cwd=root, check=True).stdout
+        commits = out("log", "--oneline", "--no-decorate", f"{base}..{head}", cwd=root)
+        return diff, commits, base, head, f"range {target}", "range", None, "", [], []
+    if target and not Path(root, target).exists() and not Path(target).exists() and \
+            git("rev-parse", "--verify", "--quiet", target + "^{commit}", cwd=root).returncode == 0:
+        head = commit_ref(root, target)
+        base = out("rev-parse", "--verify", head + "^", cwd=root) or empty_tree(root)
+        diff = git("diff", CONTEXT, base, head, cwd=root, check=True).stdout
+        commits = out("log", "-1", "--oneline", "--no-decorate", head, cwd=root)
+        return diff, commits, base, head, f"commit {target}", "commit", None, "", [], []
+
+    path_filter = None
+    if target:
+        if not Path(root, target).exists() and not Path(target).exists():
+            die(f"target '{target}' is not a PR, range, commit or existing path")
+        path_filter = [os.path.relpath(Path(target).resolve(), root) if Path(target).exists() else target]
+    head_sha = out("rev-parse", "HEAD", cwd=root)
+    upstream = out("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}", cwd=root)
+    base_ref = base_opt or (upstream if upstream and out("rev-parse", upstream, cwd=root) != head_sha else "")
+    if not base_ref:
+        base_ref = default_base(root)
+        if base_ref and out("rev-parse", base_ref, cwd=root) == head_sha:
+            base_ref = None
+    if base_ref:
+        base_ref = commit_ref(root, base_ref)
+    mb = git("merge-base", base_ref, "HEAD", cwd=root, check=True).stdout.strip() if base_ref else ""
+    if not mb:
+        mb = out("rev-parse", "HEAD~1", cwd=root) if not path_filter else head_sha
+        mb = mb or empty_tree(root)
+    diff = git("diff", CONTEXT, mb, "--", *(path_filter or ["."]), cwd=root, check=True).stdout
+    udiff, untracked = untracked_diff(root, path_filter)
+    diff += udiff
+    commits = out("log", "--oneline", "--no-decorate", f"{mb}..HEAD", cwd=root)
+    branch = out("rev-parse", "--abbrev-ref", "HEAD", cwd=root)
+    desc = f"branch {branch} vs {mb[:10]} + uncommitted"
+    kind = "branch"
+    if path_filter:
+        desc += f", limited to {path_filter[0]}"
+        kind = "path"
+        if not diff.strip():
+            diff = "".join(no_index_diff(root, f) for f in out("ls-files", "--", *path_filter, cwd=root).splitlines())
+            desc = f"current contents of {path_filter[0]} (no pending changes; reviewed as whole files)"
+            kind = "path-snapshot"
+    return diff, commits, mb, "WORKTREE", desc, kind, None, "", untracked, []
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", default="")
     ap.add_argument("--base", default="")
-    ap.add_argument("--out", default="")
     ap.add_argument("--mode", default="review")
+    ap.add_argument("--out", default="")
+    ap.add_argument("--no-diff", action="store_true", help="do not print the diff inline")
+    ap.add_argument("--done", metavar="PKG", help="remove the pinned source copy of a finished review")
     a = ap.parse_args()
+    if a.done:
+        done(a.done)
+        return
 
     root = out("rev-parse", "--show-toplevel")
     if not root:
         die("not inside a git repository")
-    target = (a.target or "").strip()
-    repo_name = Path(root).name
+    target = a.target.strip()
     stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    cfg = load_config(root)
+    home = scratch_home()
+    prune_old(home)
     if a.out:
         pkg = Path(a.out).resolve()
         if pkg.exists() and any(pkg.iterdir()):
-            die("--out must be empty; refusing to reuse stale review artifacts")
-        pkg.mkdir(parents=True, exist_ok=True)
+            die("--out must be empty")
     else:
-        pkg = new_run_dir(root, stamp, a.mode, target or out("rev-parse", "--abbrev-ref", "HEAD", cwd=root), cfg)
-    (pkg / "candidates").mkdir(exist_ok=True)
-
-    meta = {"repo_root": root, "repo": repo_name, "target": target or "(current branch)",
-            "created": stamp, "kind": None, "mode": a.mode, "run_dir": str(pkg), "config": cfg,
-            "original_repo_root": root, "source_kind": "working-tree", "collection_status": "failed"}
-    # Publish a fail-closed initial state before any fallible collection. An interrupted run
-    # must not look complete, and allocated worktrees must remain discoverable for cleanup.
+        pkg = home / f"{Path(root).name}-{stamp}-{secrets.token_hex(3)}"
+    pkg.mkdir(parents=True, exist_ok=True)
+    meta = {"repo_root": root, "original_repo_root": root, "repo": Path(root).name,
+            "target": target or "(current branch)", "created": stamp, "mode": a.mode,
+            "run_dir": str(pkg), "collection_status": "failed"}
     (pkg / "meta.json").write_text(json.dumps(meta, indent=2))
-    (pkg / "state.json").write_text(json.dumps({"mode": a.mode, "target": meta["target"],
-        "stages_done": [], "next": "packaged", "notes": []}, indent=2))
-    live_fingerprint = source_fingerprint(root, pkg)
-    branch = out("rev-parse", "--abbrev-ref", "HEAD", cwd=root)
-    pr_body = ""
-    untracked = []
-    gh_info = None
-    base = head = None
 
-    pr_num, pr_repo = parse_pr_ref(target) if target else (None, None)
-    if pr_num:
-        diff, commits, base, head, desc, gh_info = collect_pr(root, pr_num, pr_repo, pkg)
-        pr_body = json.loads((pkg / "pr.json").read_text()).get("body", "")
-        meta["kind"] = "pr"
-    elif target and (".." in target):
-        # Resolve both endpoints separately so bad ranges can never become empty reviews.
-        parts = re.split(r"(\.\.\.?)", target)
-        if len(parts) != 3:
-            die("invalid commit range")
-        left, dots, right = parts
-        base, head = commit_ref(root, left or "HEAD"), commit_ref(root, right or "HEAD")
-        diff = git("diff", CONTEXT, base + dots + head, "--", ".", EXCLUDE, cwd=root, check=True).stdout
-        commits = git("log", "--oneline", "--no-decorate", f"{base}..{head}", cwd=root, check=True).stdout.strip()
-        desc = f"range {target}"
-        meta["kind"] = "range"
-    elif target and git("rev-parse", "--verify", "--quiet", target + "^{commit}", cwd=root).returncode == 0 \
-            and not Path(root, target).exists():
-        head = commit_ref(root, target)
-        base = out("rev-parse", "--verify", head + "^", cwd=root) or empty_tree(root)
-        diff = git("diff", CONTEXT, base, head, "--", ".", EXCLUDE, cwd=root, check=True).stdout
-        commits = git("log", "-1", "--oneline", "--no-decorate", head, cwd=root, check=True).stdout.strip()
-        desc = f"commit {target}"
-        meta["kind"] = "commit"
-    else:
-        path_filter = None
-        if target:
-            if not Path(root, target).exists() and not Path(target).exists():
-                die(f"target '{target}' is not a PR, range, commit or existing path")
-            path_filter = [os.path.relpath(Path(target).resolve(), root) if Path(target).exists() else target]
-        upstream = out("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}", cwd=root)
-        base_ref = a.base or (upstream if upstream and out("rev-parse", upstream, cwd=root) != out("rev-parse", "HEAD", cwd=root) else "") or default_base(root)
-        if base_ref and out("rev-parse", base_ref, cwd=root) == out("rev-parse", "HEAD", cwd=root) and not a.base:
-            alt = default_base(root)
-            base_ref = alt if alt and out("rev-parse", alt, cwd=root) != out("rev-parse", "HEAD", cwd=root) else base_ref
-        if base_ref:
-            base_ref = commit_ref(root, base_ref)
-        mb = git("merge-base", base_ref, "HEAD", cwd=root, check=True).stdout.strip() if base_ref else ""
-        if not mb:
-            mb = out("rev-parse", "HEAD~1", cwd=root) or empty_tree(root)
-        args = ["diff", CONTEXT, mb, "--", *(path_filter or ["."]), EXCLUDE]
-        diff = git(*args, cwd=root, check=True).stdout
-        udiff, untracked = untracked_diff(root, path_filter, pkg)
-        diff += udiff
-        commits = out("log", "--oneline", "--no-decorate", f"{mb}..HEAD", cwd=root)
-        base, head = mb, "WORKTREE"
-        desc = f"branch {branch} vs {base_ref or mb[:10]} (merge-base {mb[:10]}) + uncommitted"
-        meta["kind"] = "branch"
-        meta["base_ref"] = base_ref
-        if path_filter:
-            desc += f", limited to {path_filter[0]}"
-            meta["kind"] = "path"
-            if not diff.strip():
-                # Nothing changed under the path: review its current contents as new code.
-                chunks = []
-                for f in out("ls-files", "--", *path_filter, cwd=root).splitlines():
-                    chunks.append(no_index_diff(root, f))
-                diff = "".join(chunks)
-                desc = f"current contents of {path_filter[0]} (no pending changes; reviewed as new code)"
-                meta["kind"] = "path-snapshot"
+    diff, commits, base, head, desc, kind, gh, pr_body, untracked, warnings = resolve(root, target, a.base, pkg)
+    committed = kind in ("pr", "range", "commit")
+    src_root, source_kind = pin_source(root, head, pkg) if committed and diff.strip() else (root, "working-tree")
 
+    numbered = numbered_diff(diff)
     (pkg / "diff.patch").write_text(diff)
-    (pkg / "diff-numbered.txt").write_text(numbered_diff(diff))
+    (pkg / "diff-numbered.txt").write_text(numbered)
     files = numstat(diff)
-    added = sum(f["added"] for f in files)
-    deleted = sum(f["deleted"] for f in files)
-    changed = added + deleted
-    size = "empty" if not files else "ok" if changed <= 300 else "large" if changed <= 1000 else "too-large"
-    tests_changed = [f["path"] for f in files if re.search(r"(\.spec\.|\.test\.|_test\.|Tests?/|tests?/|\.Tests\b|Test\.cs$|Tests\.cs$)", f["path"])]
-    original_root = root
-    committed = meta["kind"] in ("pr", "range", "commit")
-    source_kind = "working-tree"
-    if committed:
-        root, source_kind = snapshot(root, head, pkg.name)
-    meta.update({"repo_root": root, "source_kind": source_kind,
-                 "reviewed_commit": head if committed else commit_ref(root, "HEAD")})
-    (pkg / "meta.json").write_text(json.dumps(meta, indent=2))
-    if not committed and source_fingerprint(root, pkg) != live_fingerprint:
-        raise ValueError("Live source changed while collecting; start a fresh run")
-    warnings = []
-    if gh_info:
-        warnings = json.loads((pkg / "pr-comments.json").read_text()).get("warnings", [])
-    meta.update({"repo_root": root, "original_repo_root": original_root,
-                 "reviewed_commit": head if committed else commit_ref(root, "HEAD"),
-                 "source_kind": source_kind,
-                 "source_fingerprint": live_fingerprint if not committed else None,
-                 # Code context (diff, commits, pinned source) is complete at this point; failures
-                 # there already aborted. Missing PR *comment* context only limits comment triage.
+    added_n = sum(f["added"] for f in files)
+    deleted_n = sum(f["deleted"] for f in files)
+    changed = added_n + deleted_n
+    size = "empty" if not files else "small" if changed <= 150 else "medium" if changed <= 400 \
+        else "large" if changed <= 1000 else "too-large"
+    added = added_lines(diff)
+    risks = risk_signals(added)
+    depth, why = suggest_depth(changed, risks, files)
+    tests_changed = [f["path"] for f in files if TEST_PATH.search(f["path"])]
+    cfg = load_config(root)
+    cands = purpose_candidates(src_root, files, commits, pr_body, out("rev-parse", "--abbrev-ref", "HEAD", cwd=root))
+    instr = instruction_files(src_root, files)
+    ruff_note, hints = ruff_hints(src_root, added) if files else (None, [])
+    used_by = callers(src_root, added, diff) if files else []
+    learnings = ""
+    for lp in (Path(root, LEARNINGS),):
+        if lp.is_file():
+            learnings = lp.read_text(errors="ignore")[-3000:]
+
+    meta.update({"repo_root": src_root, "source_kind": source_kind, "kind": kind, "description": desc,
+                 "base": base, "head": head, "reviewed_commit": head if committed else commit_ref(root, "HEAD"),
+                 "head_at_collection": commit_ref(root, "HEAD"),
+                 "files": files, "added": added_n, "deleted": deleted_n, "size": size, "risk": risks,
+                 "suggested_depth": depth, "tests_changed": tests_changed, "untracked": untracked,
+                 "purpose_candidates": cands, "instruction_files": instr, "github": gh, "config": cfg,
                  "collection_status": "completed",
-                 "comment_context_status": ("partial" if warnings else "completed") if gh_info else "not-applicable",
+                 "comment_context_status": ("partial" if warnings else "completed") if gh else "not-applicable",
                  "collection_warnings": warnings})
-    cands = purpose_candidates(root, files, commits, pr_body, branch)
-    instr = instruction_files(root, files)
-
-    meta.update({"description": desc, "base": base, "head": head, "branch": branch,
-                 "files": files, "added": added, "deleted": deleted, "size": size,
-                 "tests_changed": tests_changed, "untracked": untracked,
-                 "purpose_candidates": cands, "instruction_files": instr, "github": gh_info})
     (pkg / "meta.json").write_text(json.dumps(meta, indent=2))
 
-    lines = [f"# Review package", "", "Cite lines from diff-numbered.txt: its left column is the line number in the new file.", "", f"- Target: {desc}", f"- Repo: {root}",
-             f"- Base: {base}  Head: {head}", f"- Size: {len(files)} files, +{added}/-{deleted} ({size})", ""]
-    lines.append("## Files")
-    for f in files:
-        lines.append(f"- {f['status']:8} {f['path']} (+{f['added']}/-{f['deleted']})")
-    lines += ["", "## Commits", commits or "(none: uncommitted changes only)", ""]
-    lines.append("## Purpose-document candidates (see references/intake.md)")
-    if cands:
-        for c in cands:
-            lines.append(f"- {c['path']} — {c['why']}" + (f" — \"{c['title']}\"" if c['title'] else ""))
-    else:
-        lines.append("- none found: ask the user what the change is for")
+    L = [f"# Review context: {desc}",
+         f"- Size: {len(files)} files, +{added_n}/-{deleted_n} ({size}) · risk signals: {', '.join(risks) or 'none'}"
+         f" · suggested depth: {depth} ({why})",
+         f"- Read source from: {src_root} ({source_kind})" + ("" if committed else ", the live checkout"),
+         f"- Reviewed commit: {meta['reviewed_commit'][:12]}" + ("" if committed else " + uncommitted changes"),
+         f"- HTML walkthrough default: {cfg.get('html', 'auto')}", "", "## Files"]
+    L += [f"- {f['status']:8} {f['path']} (+{f['added']}/-{f['deleted']})" for f in files] or ["- none"]
+    L += ["", "## Commits", commits or "(none: uncommitted changes only)"]
     if pr_body:
-        lines += ["", "## PR description", pr_body.strip()[:4000]]
-    lines += ["", "## Project instruction files", *([f"- {p}" for p in instr] or ["- none"])]
-    lines += ["", "## Test files changed", *([f"- {p}" for p in tests_changed] or ["- none"])]
-    if untracked:
-        lines += ["", "## Untracked files included", *[f"- {u}" for u in untracked]]
-    (pkg / "summary.md").write_text("\n".join(lines) + "\n")
-
+        L += ["", "## PR description", pr_body.strip()[:4000]]
     if warnings:
-        lines += ["", "## PR comment context incomplete (code review is unaffected; say so in the report)",
-                  *[f"- {w}" for w in warnings]]
-        (pkg / "summary.md").write_text("\n".join(lines) + "\n")
-    lines += ["", "## Run", f"- Run folder: {pkg}", f"- Mode: {a.mode}",
-              f"- Source read from: {root} ({source_kind})",
-              f"- HTML walkthrough: {html_decision(cfg.get('html', 'auto'), a.mode)}"]
-    (pkg / "summary.md").write_text("\n".join(lines) + "\n")
-    now = _dt.datetime.now().isoformat(timespec="seconds")
-    (pkg / "state.json").write_text(json.dumps({
-        "mode": a.mode, "target": meta["target"], "description": desc, "created": now, "updated": now,
-        "stages_done": ["packaged"], "next": "contract", "notes": []}, indent=2))
+        L += ["", "## PR comment context incomplete (say so under Not checked)", *[f"- {w}" for w in warnings]]
+    L += ["", "## Purpose documents (read the relevant ones; never ask unless spec mode found none)"]
+    L += [f"- {c['path']}: {c['why']}" + (f' ("{c["title"]}")' if c["title"] else "") for c in cands] or ["- none found"]
+    L += ["", "## Project rules (read these)", *([f"- {p}" for p in instr] or ["- none"])]
+    if learnings:
+        L += ["", f"## Learnings from earlier reviews ({LEARNINGS}); obey them", learnings.strip()]
+    L += ["", "## Static hints: ruff bug rules on added lines (leads to check, not findings)"]
+    L += hints or [f"- {ruff_note}" if ruff_note else "- none"]
+    if used_by:
+        L += ["", "## Changed Python symbols and their call sites (check callers when a contract changed)", *[f"- {u}" for u in used_by]]
+    L += ["", "## Tests changed", *([f"- {p}" for p in tests_changed] or ["- none"])]
+    if untracked:
+        L += ["", "## Untracked files included", *[f"- {u}" for u in untracked]]
+    summary = "\n".join(L) + "\n"
+    (pkg / "summary.md").write_text(summary)
+    print(summary)
     if size == "empty":
         print(f"EMPTY: nothing to review for {desc}")
-    print(str(pkg))
+    elif not a.no_diff and numbered.count("\n") <= INLINE_DIFF_MAX_LINES:
+        print("## Numbered diff (left column = line number in the new file; cite these)")
+        print(numbered)
+    else:
+        print(f"## Diff is in {pkg / 'diff-numbered.txt'} ({numbered.count(chr(10))} lines); read it in parts")
+    print(f"PKG={pkg}")
 
 
 if __name__ == "__main__":

@@ -12,10 +12,11 @@ review before merging. The workflow does not install branch protection or bypass
 
 ## What makes a PR easy to approve
 
-- **Review rules come from a source.** New review criteria must trace to one of the four source
-  projects listed in `skills/review-kit/references/SOURCES.md`. Add the mapping there.
+- **Review rules earn their place.** A new check must name the real defect class it catches and,
+  ideally, an eval case where it changes the result. Credit adapted material in `NOTICE`.
 - **Show the eval.** For changes to skill text, lenses, verifier or report format, run the fixtures
-  before and after (`evals/run_case.sh`, `evals/score.py`) and paste recall / false alarms in the PR.
+  before and after (`evals/run_case.sh`, `evals/score.py`) and paste recall, false alarms, wall-clock
+  seconds and cost in the PR. Speed is a feature: a change that slows reviews needs a recall win.
   A change that finds more without adding noise on the clean branch is an easy yes.
 - **Scripts stay dependency-free.** Python 3.9+ standard library and bash only.
 - **Reviews stay read-only.** Nothing in a review may edit the user's repo, move HEAD or post to
@@ -26,6 +27,6 @@ review before merging. The workflow does not install branch protection or bypass
 
 ```bash
 claude --plugin-dir .            # load your working copy
-/rk:quick                        # in any git repo
+/rk:review                       # in any git repo
 evals/run_case.sh ts-invoices feature/invoice-search clean "/rk:deep"   # should report no findings
 ```

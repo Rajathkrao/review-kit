@@ -15,12 +15,12 @@ unavailable, follow the skill's non-interactive defaults and disclose them.
 
 Registered Claude agent types `rk:lens-reviewer` and `rk:finding-verifier` are not
 required in Codex. Use the host's general subagent tool with the same role:
-- Lens: give only lens name, package path, contract path, relevant sections of
-  `references/lenses.md`, focus and output path. Apply its shared rules/schema.
-  Read source only; do not execute tests or spawn further reviewers in a lens.
-- Verifier: give the package, merged candidates, test evidence and
-  `references/verification.md`. Require rereading, attempted disproof, calibrated
-  scores and `findings.json`. Do not pass the coordinator's conclusions.
+- Lens: give only lens name, package path, contract text, relevant sections of
+  `references/lenses.md`, focus and source root. It returns candidate JSON in its final
+  message. Read source only; do not execute tests or spawn further reviewers in a lens.
+- Verifier: give the package, a group of candidates, test evidence and
+  `references/verification.md`. Require rereading, attempted disproof and the
+  confirmed/plausible/refuted labels. Do not pass the coordinator's conclusions.
 
 Run independent lenses concurrently within the host's resource limits; use
 batches when necessary. If subagents are unavailable, run lenses sequentially

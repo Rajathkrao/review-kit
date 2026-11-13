@@ -1,272 +1,145 @@
 ---
 name: review-kit
 description: >-
-  Purpose-aware code review engine with modes quick, deep (adversarial), spec, pr, test, arch, standards and full. Use when the user invokes $review-kit or runs any /rk: command or asks for a review-kit review of a diff, branch, commit range, path or GitHub pull request. Checks the change against its stated purpose (ADR, spec, plan, PR description), verifies every finding before reporting, and reports only what survives.
+  Fast, purpose-aware code review with modes review (auto depth), quick, deep (parallel adversarial
+  lenses), pr, spec, arch, test and full. Use when the user invokes $review-kit, runs any /rk:
+  command, or asks for a review-kit review of a diff, branch, commit range, path or GitHub pull
+  request. Checks the change against its stated purpose, verifies every finding against the code,
+  and never drops a candidate without a concrete disproof. Strong on Python.
 ---
 
 # review-kit
 
-## Codex invocation
+A review is worth reading only if every line in it is worth the author's time, and it is worth
+running only if it is fast. This skill gathers all context in **one** command, hunts with focused
+lenses (one inline pass, or parallel subagents in deep mode), then tries to disprove each
+candidate. A candidate is dropped only when the code disproves it. Otherwise it is reported, as a
+confirmed finding or as "worth a look".
 
-When running in Codex, read `references/codex.md` before the pipeline. Invoke as
-`$review-kit <mode> [target] [flags]`; Claude Code keeps its `/rk:*` commands.
-Use the same review criteria, candidates, verifier, filters and report format.
-
-A review is only useful if every line in it is worth the author's time. This skill
-finds candidate issues with focused lenses, then tries to **disprove** each one
-before it reaches the report. What can't be defended from the code is dropped.
-
-Every rule in this skill and its references comes from one of four sources:
-addyosmani/agent-skills, obra/superpowers, openai/codex-plugin-cc, or Anthropic's
-claude-plugins-official (code-review, pr-review-toolkit). `references/SOURCES.md`
-maps each rule to its origin. Do not add review criteria that are not in these files.
+In Codex, read `references/codex.md` first. Invoke as `$review-kit <mode> [target] [flags]`.
 
 ## Arguments
 
-Parse `$ARGUMENTS` (or the text the command passed you) into:
-
 | Part | Values | Default |
 |---|---|---|
-| mode | `quick` `deep` `spec` `pr` `test` `arch` `standards` `full` | ask (see below) |
-| target | empty (current branch + uncommitted), `A..B` / `A...B` range, commit sha, PR number / `#123` / PR URL, a path | current branch |
-| `--base <ref>` | base for branch review | upstream, else `main`/`master` |
+| mode | `review` `quick` `deep` `pr` `spec` `arch` `test` `full` | `review` |
+| target | empty (current branch + uncommitted), `A..B` / `A...B`, a sha, PR number / `#123` / PR URL, a path | current branch |
+| `--base <ref>` | base for a branch review | upstream, else `origin/HEAD`, `main`, `master` |
 | `--focus "<text>"` | area to weight heavily | none |
-| `--html` / `--no-html` | write or skip the HTML walkthrough | on in deep, full, pr, arch; off otherwise |
+| `--html` / `--no-html` | write or skip the HTML walkthrough | on in deep, full, pr, arch |
 | `--second-model` | add an independent review by a different model | off |
-| `--post` | post the review to the PR (pr mode, after confirmation) | off |
-| `--run` | pre-approves running the proposed test commands | off (ask first) |
-| `--all` | also show findings scored 60–79 and hidden minors | off |
-| `--quick` | in pr mode, use quick depth instead of deep | off |
+| `--post` | post the review to the PR (pr mode) | off |
+| `--run` | pre-approve running tests and repro scripts | off |
+| `--all` | also show minor findings | off |
+| `--quick` | in pr mode, quick depth instead of deep | off |
 
-If no mode is given, ask once with AskUserQuestion: Quick (Recommended for small
-diffs), Deep, Against spec, Full. A bare number or PR URL as the only argument
-means `pr` mode.
+`review` mode uses the `suggested depth` that the context command prints (quick for small or
+low-risk changes, deep for large or risky ones). A bare PR number or URL means `pr` mode.
 
-**Interactive vs not.** If AskUserQuestion is unavailable (headless `-p`, CI,
-scheduled run) never wait for input: take the most reasonable choice, state it in
-one line at the top of the report, and never run tests, start servers or post to
-GitHub unless the matching flag (`--run`, `--post`) was passed.
+**Never block on a question.** Do not ask which mode to run or what the change is for; infer the
+purpose from docs, PR, commits and code, and state your reading in one line of the report. Ask
+only before an outward action (posting to GitHub, running a server) or in `spec` mode when no
+purpose source exists at all. Headless runs never ask: they take the default and say so.
 
-## The pipeline
-
-Run these stages in order. Create a task list for every mode except `quick`.
-
-### 1. Package the change
-
-Run the collector. It writes everything later stages read into one directory, so
-subagents read files instead of re-deriving the diff:
+## 1. Context: one command
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/scripts/collect.py" --mode <mode> --target "<target>" [--base <ref>]
+python3 "${CLAUDE_SKILL_DIR}/scripts/collect.py" --mode <mode> [--target "<target>"] [--base <ref>]
 ```
 
-It prints the package path (call it `$PKG`): the run folder
-`<repo>/.review-kit/runs/<date>-<mode>-<target>/`. Git ignores it (via `.git/info/exclude`)
-and it never appears in a reviewed diff. Everything the run produces goes in this folder,
-so a later session or another agent can pick the run up from disk.
+It prints everything the review needs and writes nothing inside the repository: size and risk
+signals, suggested depth, files, commits, PR description, purpose documents, project rule files,
+learnings from earlier reviews, **static hints** (ruff bug rules on added Python lines), **call
+sites** of changed Python symbols, and the numbered diff itself when it is under ~1500 lines. The
+last line is `PKG=<dir>`, a scratch folder in the system temp directory holding `diff-numbered.txt`,
+`summary.md` and `meta.json` for subagents and the renderer.
 
-**Record progress** after each stage, so `/rk:resume` knows where to continue:
+- Nonzero exit: stop and report `execution_status: failed`. Never treat a failure as an empty diff.
+- `EMPTY:` line: report "nothing to review", say what was compared, verdict inconclusive, stop.
+- Cite line numbers from the left column of the numbered diff (new-file line numbers).
+- Read source from the printed `Read source from:` path. For a PR or commit that is not the
+  current checkout, that is a pinned copy inside PKG; never write into it.
+- Over ~1000 changed lines: say so and review the riskiest areas first; list what you skipped.
 
-```bash
-python3 "${CLAUDE_SKILL_DIR}/scripts/state.py" "$PKG" <stage> [--note "<one line>"]
-```
+**Purpose (the contract).** In the same turn, read in parallel: the relevant purpose documents,
+the project rule files, and the learnings. Form the contract in your head: intent (one line), must
+and must-not requirements numbered M1.. / N1.., each with its source. A behavior the sources are
+silent on is judged by what a reasonable user expects; silence is not permission. Write it down
+only when you dispatch subagents (it goes in their prompt) or the mode is `spec`.
 
-Stages: `packaged` (the collector records it), `contract`, `lenses`, `tests`, `verified`,
-`reported`. Right after packaging, store the original arguments:
-`state.py "$PKG" packaged --args "<the arguments you were given>"`.
-Record stages in order. Marking an earlier stage again invalidates downstream caches;
-an already reported run is terminal and requires a fresh run to review again.
+## 2. Hunt
 
-Read `$PKG/summary.md` first. It
-holds the stat, file list, commits, size verdict, and purpose-doc candidates. The
-full diff is `$PKG/diff.patch`; `$PKG/diff-numbered.txt` is the same diff with
-new-file line numbers, and every citation uses those numbers. In PR mode the PR body, review comments and
-reviews are in `$PKG/pr.json` and `$PKG/pr-comments.json`.
-
-If collection fails, stop with `execution_status: failed`; never interpret the failure
-as an empty diff. If collection succeeds with an empty diff, report
-`execution_status: nothing-to-review`, `verdict: inconclusive`, say what was
-compared, and stop. If `meta.comment_context_status` is `partial` (PR comments could
-not be fully read, e.g. no GraphQL access), the code review still completes: report
-the existing-comment triage as incomplete and list the warnings under "Not checked". Do not reuse a nonempty `--out` package.
-
-**Read source from `meta.repo_root`**, never by assuming the current checkout:
-- `working-tree`: branch/uncommitted review of the live checkout. Rerun if the user changes it mid-review.
-- `checkout-at-reviewed-commit`: the checkout already sits, clean, at `meta.reviewed_commit`, so it is used directly.
-- `pinned-worktree`: a temporary detached worktree at `meta.reviewed_commit` under
-  `.git/review-kit/worktrees/`. The user's checkout is untouched. Marking the run `reported`
-  removes it, so don't remove it yourself and don't write into it.
-If the size verdict is `too-large` (over ~1000 changed lines), say so, and suggest
-reviewing by directory group (agent-skills change sizing). Continue only if the
-user agrees or the run is non-interactive.
-
-### 2. Establish the purpose (the contract)
-
-Follow `references/intake.md`. In short: a change is reviewed against what it was
-meant to do. Look for an ADR, spec, plan, design note, README section or PR/issue
-description that explains this change. Show the candidates and ask which apply.
-If none exist, **ask the user what the change is for**. If they decline or the
-run is non-interactive, review against the PR description or commit messages and
-say so.
-
-Write the result to `$PKG/contract.md`: intent (1–3 lines), must-do requirements,
-must-not constraints, and the source of each. Lenses receive the contract, never
-your conclusions about whether the code meets it.
-
-### 3. Run the lenses for the mode
-
-| Mode | Lenses (see `references/lenses.md`) | How |
+| Mode | How | Lenses (`references/lenses.md`) |
 |---|---|---|
-| quick | adversarial (lead), spec (if the contract has requirements), correctness, errors, security-light, conventions | Inline, one pass, no subagents |
-| deep | correctness+perf, adversarial, history+conventions, errors+tests, security, spec (if contract has requirements) | Parallel subagents |
-| spec | spec, correctness (requirement areas only) | Parallel subagents |
-| arch | architecture, adversarial (approach focus) | Parallel subagents |
-| standards | standards, conventions | Parallel subagents |
-| test | tests, then the test runner flow | `references/testing.md` |
-| pr | deep (or quick with `--quick`), plus existing-comment triage | `references/pr.md` |
-| full | deep + spec + arch + standards, then offer test | Parallel subagents |
+| quick | inline, one pass | adversarial (lead), correctness, contract, security-light, project rules |
+| deep | 4 parallel subagents | `correctness`, `adversarial`, `contract`, `history` |
+| pr | deep (quick with `--quick`) + comment triage | as deep, plus `references/pr.md` |
+| spec | 2 parallel subagents | `contract` (all requirements), `correctness` (requirement areas only) |
+| arch | 2 parallel subagents | `architecture`, `adversarial` (approach focus) |
+| test | `references/testing.md` | `contract` (tests part), then run tests |
+| full | 5 parallel subagents | deep's four + `architecture`, then offer test |
 
-**Dispatching lens subagents.** Launch all lenses for the mode in one message,
-each as `rk:lens-reviewer` (run_in_background: false). Each prompt
-contains only: the lens name, `$PKG` path, the path to `references/lenses.md`
-plus the lens section to apply, the contract path, the `--focus` text if any, and
-the output path `$PKG/candidates/<lens>.json`. Do not pass your own opinions of
-the code. Lenses are read-only and do not spawn subagents.
+**Quick (inline).** You already hold the diff. If a changed function's body or callers matter and
+are not in the diff, read them (parallel Read calls, one focused check per named risk). Take the
+adversarial stance first: try to break the change (failure paths, retries, concurrency, trust
+boundaries, empty and boundary inputs, money and data integrity). Then check each contract item,
+then the remaining quick lenses. Every static hint is a lead: decide in one line whether it is a
+real defect here.
 
-If the Agent tool is unavailable (you are already a subagent), run the lenses
-yourself one at a time, keep each lens's notes separate, and note "lenses ran
-sequentially" in the report.
+**Deep (parallel).** In ONE message launch every lens for the mode as `rk:lens-reviewer` subagents
+(foreground, so they run concurrently). Each prompt holds only: lens name, `PKG`, path of
+`references/lenses.md`, the contract text, `--focus` if any, and the source root. Never pass your
+own opinion of the code. Each lens returns its candidates as JSON in its final message; nothing is
+written to disk. With `--second-model`, start it in the same message (`references/second-model.md`).
+If you cannot spawn subagents, run the lenses yourself in sequence and say "lenses ran inline".
 
-**Second model.** With `--second-model`, start it in parallel with the lenses
-(`references/second-model.md`). Codex if installed and logged in, otherwise a
-different Claude model. Always say which one ran or why it didn't. Never skip silently.
+## 3. Verify (no disproof, no drop)
 
-### 4. Tests and live checks (when the mode calls for it)
+Follow `references/verification.md`. Merge duplicate candidates (same location and root cause).
 
-`test` and `full` modes, and any mode where a lens marked a finding
-`needs_test: true`, go through `references/testing.md`: propose the exact commands
-with `scripts/detect_tests.py`, ask before running (unless `--run`), run, and
-save output to `$PKG/test-results.md`. UI live checks hand off to the user's
-Playwright CLI skill. Backend live checks propose starting the server and a
-throwaway probe script in `$PKG/probes/`.
+- quick, or 5 or fewer candidates: verify inline. Re-read each cited range in the source (one
+  parallel batch of Read calls), try to disprove it, label it `confirmed`, `plausible` or `refuted`.
+- More than 5 candidates in deep/pr/full: split them by file into at most 3 groups and launch one
+  `rk:finding-verifier` per group in ONE message, passing the candidate JSON inline.
 
-### 5. Verify every candidate
+Static hints you confirmed are candidates like any other.
 
-Merge `$PKG/candidates/*.json` (and second-model findings) into
-`$PKG/candidates-merged.json`, collapsing duplicates that point at the same
-location and failure. Then dispatch one `rk:finding-verifier` subagent
-with `$PKG`, the merged file, `references/verification.md`, and the test results
-path if tests ran. It re-reads the code for every candidate, tries to disprove it,
-scores it 0–100 with the rubric, sets severity, and writes `$PKG/findings.json`.
+## 4. Report
 
-**`$PKG/findings.json` is required in every mode and every outcome**, including zero
-candidates, `test` mode, and runs where you skip the verifier. It is always a JSON
-object in the shape defined in `references/verification.md`, never a bare list.
-When no candidate survives (or none was raised), write it yourself:
+Read `references/output-format.md` and write the report exactly in that format:
 
-```json
-{"execution_status": "completed", "verdict": "ship",
- "summary": "<what was checked and why nothing material was found>",
- "findings": [], "dropped": [], "not_checked": ["<anything not run>"]}
-```
+- **Findings**: `confirmed`, ordered Critical, Important, then Minor (Minor shown only in arch
+  mode or with `--all`; otherwise a one-line count). Cap: 7 in quick, 12 otherwise; list the rest
+  one line each under "Not reported". One structural problem outranks ten nits.
+- **Worth a look**: every `plausible` candidate, one or two lines each with what to check.
+- **Dismissed**: every `refuted` candidate in one line with the disproof (file:line), so the
+  reader can overrule it.
+- Zero findings is a valid result: say what was checked. Never pad.
 
-Every finding you keep needs `evidence` and `evidence_status` (`source-verified` after
-you reread the code, `test-reproduced` only with `test_evidence`).
+**JSON and HTML only when needed.** When the HTML walkthrough is on, or with `--post`, write
+`$PKG/findings.json` (schema in `references/verification.md`) and run
+`python3 "${CLAUDE_SKILL_DIR}/scripts/review_data.py" "$PKG"`; fix the file if it fails, never by
+changing the verdict. For HTML, follow `references/html-explainer.md`, then give the printed path.
+With `--post`, follow `references/pr.md`. Finally, for a pinned PR or commit review, run
+`python3 "${CLAUDE_SKILL_DIR}/scripts/collect.py" --done "$PKG"`.
 
-In `quick` mode, review from the adversarial stance first: read the `adversarial` section of
-`references/lenses.md` and try to break the change (attack surface, failure paths, retries,
-concurrency, trust boundaries), then check each contract requirement, then the remaining quick
-lenses. Then apply `references/verification.md` yourself, inline, before
-writing anything: open the file at each finding's location (Read), confirm the
-problem is there, and take the line numbers from the file, never from
-`diff.patch`. Write `$PKG/findings.json` too, so `--html` and PR posting work
-the same way in every mode.
+After the report, stop. Fix nothing unless asked. When asked to fix ("fix 1 and 3"), apply them in
+severity order, run the closest test after each, and show the evidence.
 
-### 6. Filter and rank
+## Rules for every mode
 
-From `$PKG/findings.json`:
-
-- Keep confidence ≥ 80. Everything below is dropped (shown only with `--all` if 60–79).
-- Order: Critical, then Important, then Minor. Within a level, correctness and security first.
-- Default report shows Critical and Important. Minor is shown in `standards` mode,
-  or with `--all`. Otherwise give a one-line count of hidden minors.
-- Cap: 7 findings in quick, 10 otherwise. If more survive, keep the highest
-  leverage ones and say how many were cut. One structural problem outranks ten nits.
-- Never pad. Zero findings is a valid, useful result: say "No issues found" and what was checked.
-
-### 7. Report
-
-Before writing the report, always run:
-
-```bash
-python3 "${CLAUDE_SKILL_DIR}/scripts/review_data.py" "$PKG"
-```
-
-If it fails, fix `findings.json` so it truthfully describes the review (missing fields,
-wrong shape, a verdict that doesn't follow from the findings) and run it again. Never
-change the verdict or drop a finding just to make validation pass; if the review
-really is incomplete, mark it `partial` with verdict `inconclusive`. The report's
-verdict and **Execution** line must match the validated file.
-Read `references/output-format.md` and write the report in exactly that format,
-in every mode including quick. It always starts with a one-line verdict (ship /
-ship after fixes / don't ship yet), what the change was checked against, and what
-verification evidence exists. Findings cut by the cap are listed one line each
-under "Not reported" so nothing verified is lost.
-
-Save the final report text to `$PKG/report.md` (exactly what you show the user) and end
-the report with the run folder path. Then mark the run done, which also removes a
-temporary source worktree:
-`python3 "${CLAUDE_SKILL_DIR}/scripts/state.py" "$PKG" reported`.
-Do this after the HTML and any posting below.
-
-- **HTML walkthrough**: follow the `HTML walkthrough:` line in `summary.md` (it already applies
-  the mode and config); `--html` turns it on and `--no-html` off, except that config `never` wins.
-  When on, read `references/html-explainer.md`, write `$PKG/explainer.json` with a full
-  walkthrough and an in-depth entry for **every** reported finding, then run
-  `python3 "${CLAUDE_SKILL_DIR}/scripts/render_html.py" "$PKG"` and give the user the printed path.
-- `pr` mode with `--post`: follow the posting steps in `references/pr.md`. Show
-  the exact comments first and get a yes before anything is posted.
-
-After the report, stop. Don't start fixing anything unless the user asks. When
-they ask, apply the fixes in the order Critical → Important, test each, and
-report evidence (superpowers verification-before-completion).
-
-## Rules that apply in every mode
-
-- **No shortcuts by diff size.** `deep`, `full`, `pr`, `arch`, `spec`, `standards` and `test` always
-  run their lenses as `rk:lens-reviewer` subagents and the `rk:finding-verifier`, and write the HTML
-  walkthrough when it is on, however small the change. A small diff makes those steps fast, not
-  optional. Inline single-pass review is what `quick` mode is for. `state.py "$PKG" reported`
-  refuses to finish a run whose required outputs are missing and lists what to do.
-
-- **Evidence before claims.** No finding without a file and line range you read.
-  No "tests pass" without output from a run in this session.
-- **Changed code only.** Pre-existing problems on lines the change didn't touch are
-  out of scope unless the change makes them reachable or worse.
-- **Don't trust descriptions.** The PR body, commit messages and comments are
-  claims. Verify them against the diff.
-- **No style feedback that a linter, formatter or compiler would catch.** CI runs those.
-- **Severity is about impact, not effort.** Not everything is Critical.
-- **Say what you did not check.** Lenses that didn't run, tests not run, requirements
-  that can't be verified from the diff (⚠️) all appear in the report.
-- **Read-only.** Reviews never edit files, move HEAD or change the index. Test runs
-  and probe scripts write only to the run folder, a disposable copy, or build/test output folders.
-
-## Resuming a run
-
-`/rk:resume` (or "continue the last review") picks up an interrupted run, including one
-started by another session or agent:
-
-1. `python3 "${CLAUDE_SKILL_DIR}/scripts/state.py" --list .` lists runs, newest first, with
-   their original args, the stages done and the next stage. Use the run the user names, else
-   the newest one that isn't complete. If the newest is complete, show its `report.md` and
-   ask whether to start a new run instead.
-2. Read `state.json` (mode and args), `meta.json`, `summary.md`, and `contract.md` if present.
-   Run `python3 "${CLAUDE_SKILL_DIR}/scripts/state.py" --check-source "$PKG"` before
-   reusing any candidates or findings. If it fails (missing source, changed commit, or local
-   edits in committed or live context), start a fresh run; do not reuse the old results.
-3. Continue from `next`. Reuse what is on disk: a lens whose `candidates/<lens>.json` exists
-   doesn't run again; a valid `findings.json` means verification is done. For a
-   `working-tree` run, source fingerprints cover HEAD, tracked changes and untracked contents.
-   Older live runs without a fingerprint require a fresh collection.
-4. Keep recording stages, and finish exactly as section 7 says.
+- **Evidence before claims.** No finding without a file and line range you read. No "tests pass"
+  without output from a run in this session.
+- **Changed code, real impact.** Problems on untouched lines are out of scope unless the change
+  makes them reachable or worse. A change that breaks an untouched caller is in scope.
+- **Descriptions are claims.** The PR body, commit messages and comments are verified, not trusted.
+- **No formatter or style feedback.** Type errors are in scope unless the repo's CI runs a type
+  checker on these files (check its config).
+- **Severity is impact; confidence is certainty.** A rare trigger lowers neither below what the
+  code supports; see verification.md.
+- **Say what you did not check**: lenses not run, tests not run, requirements you couldn't verify.
+- **Read-only.** Never edit files, move HEAD or change the index. Repro scripts and test output go
+  under `PKG` only, run with `--run` or after the user approves.
+- **Learnings.** When the user rejects a finding with a reason or says "remember …", append one
+  line to `<repo>/.review-kit/learnings.md` (create it, and add `/.review-kit/` to
+  `.git/info/exclude` so it stays out of `git status`). Every review reads it.

@@ -111,7 +111,7 @@ Unverified ideas never go here: only findings that survived verification.
 python3 "${CLAUDE_SKILL_DIR}/scripts/render_html.py" "$PKG"
 ```
 
-The page is written to `$PKG/review.html` in the run folder. The renderer validates
+The page is written to `$PKG/review.html` (the scratch folder). The renderer validates
 `findings.json` first and refuses to render invalid data. It prints `thin: ...` lines for problems
 whose explanation is missing or too short: fix those entries in `explainer.json` and render once
 more. Don't loop beyond that. Give the user the path. If the session

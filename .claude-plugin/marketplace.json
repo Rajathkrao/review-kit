@@ -8,7 +8,7 @@
     {
       "name": "rk",
       "source": "./",
-      "description": "Purpose-aware, verified, low-noise code review with quick, deep, spec, pr, test, arch, standards and full modes."
+      "description": "Fast, verified code review: auto depth, adversarial lenses, no real bug dropped without a disproof, HTML walkthrough. Strong on Python."
     }
   ]
 }

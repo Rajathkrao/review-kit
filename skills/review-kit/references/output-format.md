@@ -7,45 +7,51 @@ the mode never produces it (e.g. no "Existing PR comments" outside pr mode).
 ## Review · <target> · <mode>
 
 **Verdict: Don't ship yet** — <one terse line: the strongest reason, or "no material issues found">
-**Checked against:** <contract source, e.g. docs/adr/0007-export-limits.md> · <n> requirements: ✅ <met> ❌ <missing> ⚠️ <cannot verify>
-**Execution:** completed | partial | failed | nothing-to-review · reviewed commit: <SHA>
-**Verification:** <`npx jest src/export` → 14 passed, 1 failed> | tests not run (<why>)
-**Scope:** <n> files, +<a>/−<d> · lenses: <list> · second model: <codex | claude-opus | not used | unavailable: reason>
+**What this change does:** <two sentences in plain words, for someone new to this code>
+**Checked against:** <purpose source, e.g. docs/adr/0007-export-limits.md, or "inferred from commits"> · <n> requirements: ✅ <met> ❌ <missing> ⚠️ <cannot verify>
+**Execution:** completed | partial | failed | nothing-to-review · <reviewed commit short SHA> · <seconds or "lenses: …">
+**Verification:** <`pytest tests/test_x.py` → 14 passed, 1 failed> | <repro: `python repro/f2.py` → sum 999> | tests not run (<why>)
 
 ### Findings
 
 **1. Critical: <title>**
-`src/export/service.ts:42-47`
+`src/export/service.py:42-47`
 <What goes wrong, for whom and when, 2–4 sentences. Say why the code does it: the wrong assumption.>
 **Trigger:** <the smallest concrete input or sequence that causes it, with real values>
 **Impact:** <what it costs: money, data, security, users affected, and whether it is silent>
 **Fix:** <concrete change; short code sketch if it helps>
 **Test:** <the test that fails today and passes after the fix, one line>
-<sub>confidence 92 · errors, adversarial · verified by test · M2</sub>
+<sub>confidence 92 · adversarial, correctness · source-verified · M2</sub>
 
 **2. Important: <title>**
 ...
 
-### Spec compliance            (spec / deep with contract / full / pr)
-- ✅ M1 Only caller's tenant — `service.ts:28`
-- ❌ M2 Archived invoices excluded — no filter in `service.ts:30-36` (→ finding 3)
-- ⚠️ M3 413 above 10k rows — enforced in gateway config? Not in this diff; check `gateway/limits.yaml`
+### Worth a look
+- `src/jobs.py:88` <title>: <one line on the risk>. Check: <the one fact that decides it>.
+
+### Spec compliance            (when the contract has items)
+- ✅ M1 Only caller's tenant — `service.py:28`
+- ❌ M2 Archived invoices excluded — no filter in `service.py:30-36` (→ finding 3)
+- ⚠️ M3 413 above 10k rows — not in this diff; check `gateway/limits.yaml`
 
 ### Existing PR comments       (pr mode)
 | # | Comment (author) | Verdict | Why |
 |---|---|---|---|
 | 1 | "Use a Set here" (alice) | Valid, unaddressed | O(n²) on 10k rows, line 61 |
-| 2 | "Remove the retry" (bob) | Push back | Retry is idempotent per ADR-0007; removing it drops a stated requirement |
 
-### Not reported
-<k> candidates dropped after verification · <m> minor suggestions hidden (`--all` to show)
-Declined to judge: <one line each, if any>
-Not checked: <lenses that didn't run, unreachable services, tests not run>
+### Dismissed
+- <title> — <the disproof, with file:line>  (one line each; the reader can overrule)
+
+### Not reported / not checked
+<findings cut by the cap, one line each> · <k> minor hidden (`--all`) · Not checked: <lenses not run, tests not run, unreachable services>
 ```
 
 Rules:
 
 - No findings: write `### Findings` then `No issues found. Checked: <lenses> against <contract>.`
+- Omit empty sections (no "Worth a look" header with nothing under it).
+- Plain words: short sentences, explain a technical term the first time. The reader may never
+  have seen this code. Number findings so the user can say "fix 1 and 3".
 - One line of genuine praise is allowed after the verdict line if something is notably well
   done (superpowers: accurate praise builds trust). Never generic praise.
 - File references are `path:start-end`. In pr mode also include a GitHub link with the full
@@ -53,7 +59,7 @@ Rules:
   one line of context before and after (Anthropic code-review link format).
 - Severity labels are the agent-skills prefixes: **Critical:**, **Important:** (agent-skills
   "Required"), **Minor:** / **Nit:**, **FYI**.
-- `--all` adds a `### Lower confidence (60–79)` section and the hidden minors, clearly labeled.
+- `--all` shows the hidden minors.
 
 ## PR comment format (posted with --post)
 
@@ -70,7 +76,7 @@ Inline comment, one per finding located on a line in the PR diff:
 <replacement lines, only when the fix is a small, exact replacement of the commented lines>
 ```
 
-<sub>review-kit · confidence 92 · verified by test</sub>
+<sub>review-kit · confidence 92 · source-verified</sub>
 ```
 
 Review summary body (submitted as event `COMMENT`, never APPROVE or REQUEST_CHANGES unless the
@@ -97,6 +103,6 @@ Reports and HTML must display execution state and the reviewed commit/context.
 Only completed reviews may say "No issues found" or be submitted to a PR.
 For partial/failed/empty-scope runs, say the result is inconclusive and list the
 missing checks; never convert missing evidence into approval. Findings display
-`source-verified`, `test-reproduced`, or `unverified` labels. A test-reproduced
+`source-verified` or `test-reproduced`. A test-reproduced
 finding includes its command, observed result and exit status. The final JSON
 contract and migration rules are in `verification.md`.

@@ -92,7 +92,7 @@ class CollectorTests(TemporaryCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         meta = json.loads((self.pkg/'meta.json').read_text())
         self.assertEqual(meta['reviewed_commit'], self.base)
-        self.assertEqual(meta['size'], 'ok')
+        self.assertEqual(meta['size'], 'small')
         # HEAD is this commit and the checkout is clean, so it is read directly (no copy).
         self.assertEqual(meta['source_kind'], 'checkout-at-reviewed-commit')
         self.assertEqual(meta['repo_root'], str(self.repo))
