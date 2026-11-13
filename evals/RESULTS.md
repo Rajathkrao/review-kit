@@ -227,3 +227,23 @@ What still separates versions: quick's recall on py-ingest, false alarms on the 
 and above all time and cost, since deep's detection is saturated here too. A case deep misses
 probably needs bugs that only show up when the code is run, or several interacting files that
 are not in the diff.
+
+## Harder set after the speed rewrite (2026-11-13)
+
+`JOBS=8 evals/run_hard.sh TAG "/rk:quick"`. Time is the sum of per-case wall-clock seconds.
+
+| Version | Planted bugs | Clean-branch false alarms | Time | Cost |
+|---|---|---|---|---|
+| Baseline (268fdda) | 26/28 | 0 | 603 s | $3.57 |
+| main after #19/#20 (one-call context, no-drop verifier) | 26/28 (H6 cut by the cap, H8 missed) | 2 | 597 s | $3.38 |
+| Walkthrough v3 PR (no cap on Critical/Important, scope and severity rules, `functools.wraps` note) | **28/28** | **0** | 604 s | $3.52 |
+
+The two false alarms on main were a log line that lost its job id under the default formatter
+(observability-only, now Minor) and a missing `MaxValueValidator` on a model the change didn't
+touch. Both are now handled by explicit rules in `references/verification.md`. H8 is a general
+Python trap that `references/python.md` now names; it is planted in this set, so treat that one
+gain with suspicion until another case shows it.
+
+Deep with the HTML walkthrough on the dev payouts fixture: 418 s / $2.68 with one writer after
+review, 392 s / $4.03 with separate problem writers, **359 s / $3.28** with a picture writer in
+parallel with the lenses and verifiers writing the problem sections.

@@ -2,8 +2,8 @@
 name: review-kit
 description: >-
   Fast, purpose-aware code review with modes review (auto depth), quick, deep (parallel adversarial
-  lenses), pr, spec, arch, refine (Ponytail-style simplify/reuse/refactor, optional --apply), test
-  and full. Use when the user invokes $review-kit, runs any /rk:
+  lenses), pr, spec, arch, refine (Ponytail-style simplify/reuse/refactor, optional --apply), explain
+  (HTML walkthrough with architecture and sequence diagrams), test and full. Use when the user invokes $review-kit, runs any /rk:
   command, or asks for a review-kit review of a diff, branch, commit range, path or GitHub pull
   request. Checks the change against its stated purpose, verifies every finding against the code,
   and never drops a candidate without a concrete disproof. Strong on Python.
@@ -23,11 +23,11 @@ In Codex, read `references/codex.md` first. Invoke as `$review-kit <mode> [targe
 
 | Part | Values | Default |
 |---|---|---|
-| mode | `review` `quick` `deep` `pr` `spec` `arch` `refine` `test` `full` (`standards` = `refine`) | `review` |
+| mode | `review` `quick` `deep` `pr` `spec` `arch` `refine` `explain` `test` `full` (`standards` = `refine`) | `review` |
 | target | empty (current branch + uncommitted), `A..B` / `A...B`, a sha, PR number / `#123` / PR URL, a path | current branch |
 | `--base <ref>` | base for a branch review | upstream, else `origin/HEAD`, `main`, `master` |
 | `--focus "<text>"` | area to weight heavily | none |
-| `--html` / `--no-html` | write or skip the HTML walkthrough | on in deep, full, pr, arch |
+| `--html` / `--no-html` | write or skip the HTML walkthrough | on in deep, full, pr, arch, explain |
 | `--second-model` | add an independent review by a different model | off |
 | `--post` | post the review to the PR (pr mode) | off |
 | `--run` | pre-approve running tests and repro scripts | off |
@@ -49,7 +49,7 @@ purpose source exists at all. Headless runs never ask: they take the default and
 python3 "${CLAUDE_SKILL_DIR}/scripts/collect.py" --mode <mode> [--target "<target>"] [--base <ref>] [--whole]
 ```
 
-In refine mode with a file or folder target, pass `--whole`: it reviews the whole current files,
+In refine and explain modes with a file or folder target, pass `--whole`: it reviews the whole current files,
 not only their pending changes, and adds ruff's simplification rules to the hints.
 
 It prints everything the review needs and writes nothing inside the repository: size and risk
@@ -82,6 +82,7 @@ only when you dispatch subagents (it goes in their prompt) or the mode is `spec`
 | spec | 2 parallel subagents | `contract` (all requirements), `correctness` (requirement areas only) |
 | arch | 2 parallel subagents | `architecture`, `adversarial` (approach focus) |
 | refine | inline up to ~1500 lines; else parallel `refine` subagents, one per module group | `references/refine.md` |
+| explain | inline: read the code and its callers, no bug hunt | `references/html-explainer.md` (explain mode) |
 | test | `references/testing.md` | `contract` (tests part), then run tests |
 | full | 6 parallel subagents | deep's four + `architecture` + `refine`, then offer test |
 
@@ -97,6 +98,9 @@ real defect here.
 `references/lenses.md`, the contract text, `--focus` if any, and the source root. Never pass your
 own opinion of the code. Each lens returns its candidates as JSON in its final message; nothing is
 written to disk. With `--second-model`, start it in the same message (`references/second-model.md`).
+When the HTML walkthrough is on, also launch one `rk:walkthrough-writer` in that same message with
+`PKG`, `EXPLAINER_FILE` (path of `references/html-explainer.md`), the contract text
+and the source root: it writes `$PKG/explainer.json` while the lenses hunt.
 If you cannot spawn subagents, run the lenses yourself in sequence and say "lenses ran inline".
 
 **Refine.** Read `references/refine.md` and follow it: map the code and the helpers the codebase
@@ -111,8 +115,11 @@ Follow `references/verification.md`. Merge duplicate candidates (same location a
 
 - quick, or 5 or fewer candidates: verify inline. Re-read each cited range in the source (one
   parallel batch of Read calls), try to disprove it, label it `confirmed`, `plausible` or `refuted`.
-- More than 5 candidates in deep/pr/full: split them by file into at most 3 groups and launch one
-  `rk:finding-verifier` per group in ONE message, passing the candidate JSON inline.
+- More than 5 candidates in deep/pr/full: number them `F1`, `F2`, … (the `id` field), split them
+  by file into at most 3 groups and launch one `rk:finding-verifier` per group in ONE message,
+  passing the candidate JSON inline. With the HTML walkthrough on, also pass `HTML=yes`, the group
+  number `K` and `EXPLAINER_FILE`: each verifier writes the problem write-ups for what it confirms,
+  so no extra pass is needed. Keep the verifiers' ids in `findings.json`; the renderer renumbers.
 
 Static hints you confirmed are candidates like any other.
 
@@ -121,8 +128,9 @@ Static hints you confirmed are candidates like any other.
 Read `references/output-format.md` and write the report exactly in that format:
 
 - **Findings**: `confirmed`, ordered Critical, Important, then Minor (Minor shown only in arch
-  mode or with `--all`; otherwise a one-line count). Cap: 7 in quick, 12 otherwise; list the rest
-  one line each under "Not reported". One structural problem outranks ten nits.
+  mode or with `--all`; otherwise a one-line count). Every Critical and Important finding is shown in full, never cut
+  by a cap; past 7 in quick or 12 otherwise, write the extra ones in 2–3 lines each. One
+  structural problem outranks ten nits.
 - **Worth a look**: every `plausible` candidate, one or two lines each with what to check.
 - **Dismissed**: every `refuted` candidate in one line with the disproof (file:line), so the
   reader can overrule it.
@@ -131,7 +139,9 @@ Read `references/output-format.md` and write the report exactly in that format:
 **JSON and HTML only when needed.** When the HTML walkthrough is on, or with `--post`, write
 `$PKG/findings.json` (schema in `references/verification.md`) and run
 `python3 "${CLAUDE_SKILL_DIR}/scripts/review_data.py" "$PKG"`; fix the file if it fails, never by
-changing the verdict. For HTML, follow `references/html-explainer.md`, then give the printed path.
+changing the verdict. For HTML, follow `references/html-explainer.md` ("Parallel writers" when
+the walkthrough writer and verifiers wrote parts): add `finding_ids` to `explainer.json`, write
+any missing problem entries yourself, then render and give the printed path.
 With `--post`, follow `references/pr.md`. Finally, for a pinned PR or commit review, run
 `python3 "${CLAUDE_SKILL_DIR}/scripts/collect.py" --done "$PKG"`.
 

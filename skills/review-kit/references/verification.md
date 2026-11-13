@@ -63,7 +63,15 @@ main path, and silent failures are never dropped for being rare.
   broken main path, tenant-isolation break.
 - **Important** (fix before merge): wrong behavior on a real path, a missed contract requirement,
   swallowed errors, a crash on a reachable input, a caller broken by the change, weakened tests.
-- **Minor**: polish, simplification, a narrow edge with small impact.
+- **Minor**: polish, simplification, a narrow edge with small impact. Also log wording and
+  observability-only changes, unless something in the repo (a test, parser, alert rule or the
+  contract) depends on the old text.
+
+A finding whose harm depends on something you cannot see (deployment config, a formatter, a
+caller outside the repo) is `plausible` with that fact as its `check`, not `confirmed`. A
+validation gap in an untouched model is in scope only when the change adds the first path that
+writes the bad value *and* nothing else (form, serializer, DB constraint) stops it; otherwise
+it is pre-existing.
 
 A stated rationale in the PR ("kept simple") does not lower severity. Judge the code.
 

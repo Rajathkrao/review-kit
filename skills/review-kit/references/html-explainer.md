@@ -4,7 +4,7 @@ A self-contained page that teaches the reader what the change does, in the order
 explains every problem deeply enough to fix it without re-reading the diff. It's written for the
 person who just wrote the code, or a reviewer seeing this area for the first time.
 
-Written by default in `deep`, `full`, `pr` and `arch` modes, and in any mode with `--html`.
+Written by default in `deep`, `full`, `pr`, `arch` and `explain` modes, and in any mode with `--html`.
 `--no-html` or `"html": "never"` in config skips it. `"html": "always"` writes it in every mode.
 
 **You never copy code into this file.** The renderer reads the real source of the reviewed commit
@@ -22,6 +22,34 @@ Trace the change yourself: read the diff and the code it calls. Then write:
   "before": "Nothing charged subscriptions automatically.",
   "after": "Every minute, on each worker, runRenewals charges subscriptions whose nextBillingAt has passed.",
   "entry_point": "renewalCron.run() every minute on each worker",
+  "contract": "Intent: ...\nM1: ... (docs/renewals.md)\nN1: ...",
+  "architecture": {
+    "caption": "One sentence on what the picture shows.",
+    "nodes": [
+      {"id": "cron", "label": "renewalCron (every minute, 3 workers)", "kind": "job", "file": "src/cron.ts", "changed": true},
+      {"id": "renew", "label": "runRenewals", "kind": "logic", "file": "src/renewals.ts", "changed": true, "finding_ids": ["F1"]},
+      {"id": "db", "label": "subscriptions table", "kind": "data"},
+      {"id": "gw", "label": "Payment gateway", "kind": "external"}
+    ],
+    "edges": [
+      {"from": "cron", "to": "renew", "label": "run()"},
+      {"from": "renew", "to": "db", "label": "page due rows"},
+      {"from": "renew", "to": "gw", "label": "charge"}
+    ]
+  },
+  "sequences": [
+    {
+      "title": "Two workers renew the same subscription",
+      "actors": ["Worker A", "Worker B", "DB", "Gateway"],
+      "messages": [
+        {"from": "Worker A", "to": "DB", "label": "page(): sub_42 due"},
+        {"from": "Worker B", "to": "DB", "label": "page(): sub_42 due"},
+        {"from": "Worker A", "to": "Gateway", "label": "charge $15"},
+        {"from": "Worker B", "to": "Gateway", "label": "charge $15", "finding_id": "F1"},
+        {"from": "DB", "to": "DB", "label": "sub_42 charged twice", "kind": "note"}
+      ]
+    }
+  ],
   "steps": [
     {
       "title": "Page through active subscriptions",
@@ -65,9 +93,29 @@ Trace the change yourself: read the diff and the code it calls. Then write:
   },
   "key_concepts": [{"term": "Idempotency key", "meaning": "A value that lets a server perform a request at most once, however often it is retried."}],
   "try_it_yourself": ["Run three runRenewals calls in parallel against one due subscription: expect one charge."],
-  "changed_files": [{"path": "src/renewals.ts", "role": "The renewal job", "change": "new"}]
+  "changed_files": [{"path": "src/renewals.ts", "role": "The renewal job", "change": "new", "order": 1}]
 }
 ```
+
+### The big picture (`architecture`, `sequences`)
+
+The renderer draws these as SVG; you only list boxes and arrows. Draw what a newcomer needs to see
+before reading code:
+- `architecture`: 4–10 nodes: the entry points, the changed units, the data stores and the external
+  systems they touch, with arrows for calls or data flow in the direction it moves. List the entry
+  point first. Mark `changed: true` on what this change adds or modifies and put each finding id on
+  the node where it happens. `kind` is one of `request` `job` `logic` `data` `external` `ui`
+  `config` `test`; optional `layer` (0 = top) overrides placement.
+- `sequences`: 1–3 flows, one per entry point or per problem worth seeing in time order (a race, a
+  retry, a partial failure). 3–6 actors, 4–12 messages, real values in labels, `finding_id` on the
+  message where it goes wrong. `kind`: `call` (default), `return`, `async` (dashed) or `note`.
+- For Python changes the renderer also draws the module import map by itself.
+
+### Reading order (`changed_files[].order`)
+
+Number the files in the order a reviewer should read them, foundations first (models and helpers
+before the code that uses them, tests last), with a one-line `role` each. Like a change stack, this
+turns an alphabetical file list into a story.
 
 ### The walkthrough (`steps`)
 
@@ -103,7 +151,30 @@ lines written with real line breaks (`\n` in the JSON string), never one long li
   It must be correct for this codebase; if the full fix is larger, show the core and say so.
 - `test`: a focused test that fails today and passes after the fix, in the project's test style.
 
-Unverified ideas never go here: only findings that survived verification.
+Unverified ideas never go here: only confirmed findings. `plausible` and `dropped` entries in
+`findings.json` are rendered as "Worth a look" and "Dismissed" automatically.
+
+## Explain mode
+
+`explain` writes this page without hunting for bugs: the big picture, reading order, walkthrough,
+key concepts and "check it yourself". Write `findings.json` with `"mode": "explain"`,
+`execution_status: "completed"`, `verdict: "ship"`, a one-line `summary` of what was explained, and
+empty `findings`. The page then shows "Walkthrough only, not reviewed for bugs" instead of a
+verdict. Use `--whole` with a file or folder target to explain existing code.
+
+### Parallel writers (deep, pr, full, arch)
+
+Writing this page alone after the review roughly doubles the run, so in subagent modes it is split:
+- While the lenses hunt, one `rk:walkthrough-writer` writes `explainer.json` without `problems`
+  and without `finding_ids`.
+- Verifiers run with `HTML=yes` write `$PKG/problems-<K>.json` (an object keyed by finding id) for
+  what they confirm. The renderer merges those files into `problems` and renumbers ids F1, F2, …
+  in report order, everywhere they are referenced.
+- After verification, you add `finding_ids` to the nodes, messages and steps where each confirmed
+  finding happens (a small edit to `explainer.json`), and write any problem entry that is missing
+  (inline verification, or a writer that failed).
+
+Quick and explain modes write everything inline.
 
 ## 2. Render
 
