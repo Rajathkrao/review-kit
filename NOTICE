@@ -21,4 +21,8 @@ This project includes material from third-party projects:
 4. obra/superpowers (https://github.com/obra/superpowers), MIT License,
    Copyright (c) 2025 Jesse Vincent. Review criteria adapted throughout the lens references.
 
+5. DietrichGebert/ponytail (https://github.com/DietrichGebert/ponytail), MIT License,
+   Copyright (c) 2026 DietrichGebert. The refine mode (skills/review-kit/references/refine.md)
+   adapts its "smallest complete change" ladder, lean checklist and plain-English finding shape.
+
 A copy of the Apache License 2.0 is available at https://www.apache.org/licenses/LICENSE-2.0.

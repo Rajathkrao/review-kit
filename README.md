@@ -48,13 +48,14 @@ review uses the Codex CLI if installed and logged in, otherwise a different Clau
 | `/rk:pr <number\|url>` | Deep review of a GitHub PR, judges its existing comments, `--post` to publish after you approve |
 | `/rk:spec [target]` | Requirement-by-requirement check against the ADR / spec / plan |
 | `/rk:arch [target]` | Design, boundaries, contracts, types, and whether the approach is right |
+| `/rk:refine [file\|folder\|target]` | Make code smaller and more reusable: delete, reuse existing helpers, stdlib, kill one-off abstractions, merge copies, flatten logic. Patches with lines saved; `--apply` makes the edits and tests each |
 | `/rk:test [target]` | Finds and runs the tests that cover the change (asks first), mutation-checks them |
-| `/rk:full [target]` | deep + architecture, then offers tests |
+| `/rk:full [target]` | deep + architecture + refine, then offers tests |
 
 **Target**: nothing (current branch vs its base, plus uncommitted work), `main...feature`, a commit,
 a PR number or URL, or a path.
 **Flags**: `--html` / `--no-html` · `--second-model` · `--run` (pre-approve tests and repro scripts) ·
-`--all` (show minor findings) · `--focus "auth changes"` · `--base develop` · pr mode: `--post`, `--quick`.
+`--all` (show minor findings) · `--focus "auth changes"` · `--base develop` · pr mode: `--post`, `--quick` · refine: `--apply`.
 
 ## Why it is fast
 
@@ -91,6 +92,17 @@ transactions around external side effects, Django/SQLAlchemy/FastAPI/Pydantic tr
 under live data, unsafe deserialization, path traversal, and public API breaks. The context
 command runs ruff's bug-class rules (B, ASYNC, DTZ, S, BLE, RUF006, …) on added lines only and lists
 the callers of every changed function, so a broken caller is caught without crawling the repo.
+
+## Refine mode
+
+`/rk:refine payouts/` reads the whole folder (or a file, branch or PR) the way a lazy senior
+developer would: what can be deleted, which helper the codebase already has, what the standard
+library already does, which abstraction has one implementation, which near-copies should merge,
+and which functions mix jobs. Bugs it notices come first. Every refactor comes with a patch, the
+lines it saves and why behavior stays the same (callers checked), and the report ends with
+`Lean: −N lines`. `--apply` (or "apply 2 and 4") makes the edits one at a time and runs the
+closest test after each, reverting any that breaks. Inspired by
+[Ponytail](https://github.com/DietrichGebert/ponytail).
 
 ## Learnings
 

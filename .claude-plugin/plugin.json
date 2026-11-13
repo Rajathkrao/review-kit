@@ -1,6 +1,6 @@
 {
   "name": "rk",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Fast code review that checks the change against its purpose, hunts with adversarial lenses (inline or in parallel), and never drops a candidate without a concrete disproof. Strong on Python (ruff bug rules, async/ORM/migration checks). Modes: review (auto depth), quick, deep, pr, spec, arch, test, full. Optional HTML walkthrough and second-model review.",
   "author": {
     "name": "Rajath",

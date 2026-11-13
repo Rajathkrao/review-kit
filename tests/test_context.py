@@ -105,6 +105,18 @@ class ContextTests(TemporaryCase):
         self.assertEqual(pkg.parent, self.root / 'scratch')
         self.assertTrue((pkg / 'diff-numbered.txt').is_file())
 
+    def test_refine_whole_reviews_full_files_with_simplification_hints(self):
+        (self.repo / 'pkg').mkdir()
+        (self.repo / 'pkg/m.py').write_text('def f(xs):\n    found = False\n    for x in xs:\n        if x:\n            found = True\n    return found\n')
+        git(self.repo, 'add', '.')
+        git(self.repo, 'commit', '-qm', 'Module')
+        (self.repo / 'pkg/m.py').write_text((self.repo / 'pkg/m.py').read_text() + '\n\ndef g():\n    return 1\n')
+        r = self.collector('--mode', 'refine', '--whole', '--target', 'pkg')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('reviewed as whole files', r.stdout)
+        self.assertIn('     1 +def f(xs):', r.stdout)  # unchanged lines are included
+        self.assertIn('bug and simplification rules', r.stdout)
+
     def test_depth_suggestion(self):
         files = [{'path': 'a.py'}]
         self.assertEqual(collect.suggest_depth(50, ['money', 'concurrency'], files)[0], 'quick')
