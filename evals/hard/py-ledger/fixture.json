@@ -1,0 +1,9 @@
+{
+  "main_message": "ledger 0.4: accounts, transfers, CSV import, statements",
+  "branches": [
+    {"name": "feature/multi-currency", "dir": "multi-currency",
+     "message": "Multi-currency accounts (ADR 0003)\n\nMoney value type with ISO 4217 minor units, per-currency entries and statements,\ncross-currency transfers through fx-clearing, OFX import, migration of existing databases."},
+    {"name": "feature/statement-export", "dir": "statement-export",
+     "message": "Export statements as CSV for the accountants\n\nadds `ledger statement --csv`; memo cells are neutralised against spreadsheet formulas."}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "main_message": "assets service 1.8: per-project uploads and downloads",
+  "branches": [
+    {"name": "feature/bundle-upload", "dir": "bundles",
+     "message": "Bundle uploads: extract .tar.gz exports into a project (docs/bundles.md)\n\nAlso serves nested paths so bundle folders can be downloaded."},
+    {"name": "feature/safe-content-type", "dir": "content-type",
+     "message": "Serve uploads with an explicit content type; download active content\n\nSVG and HTML uploads were rendered inline on our origin."}
+  ]
+}

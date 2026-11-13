@@ -1,0 +1,9 @@
+{
+  "main_message": "jobs worker 2.3: sequential dispatcher, email handler",
+  "branches": [
+    {"name": "feature/concurrent-dispatch", "dir": "concurrent",
+     "message": "Run jobs concurrently, schedule retries via run_at, drain on SIGTERM\n\nAdds webhook.deliver and report.export handlers and routes the pre-2.0 kind names.\nSee docs/dispatch.md."},
+    {"name": "fix/structured-logging", "dir": "logging",
+     "message": "Log job outcomes as structured fields\n\nOps wants job_id/kind/attempt as fields instead of parsing messages."}
+  ]
+}
