@@ -20,8 +20,9 @@ and `RUN_ALLOWED` (`yes` / `no`). With the HTML walkthrough on it also gives `HT
 2. In one batch, read every cited range plus enough around it to follow the claimed path.
 3. For each candidate: write the minimal trigger, try to disprove it (guard, caller, constraint,
    test, contract, comment), then label it `confirmed`, `plausible` or `refuted`. Refute only by
-   naming the file:line or document that disproves it. Rewrite `body` and `recommendation` to be
-   specific. Correct line numbers. If re-reading shows the real problem is different from the
+   naming the file:line or document that disproves it. Correct line numbers. Keep the lens's
+   `body` and `recommendation` unless they are wrong or vague; then rewrite them in one or two
+   sentences. Output is time the user waits: no essays. If re-reading shows the real problem is different from the
    lens's description, report the real problem in its place.
 4. If `RUN_ALLOWED` is `yes` and a pure-logic candidate is contested, write a tiny repro under
    `PKG/repro/` and run it (never a full suite, never real services). Quote the output.

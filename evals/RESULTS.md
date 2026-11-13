@@ -247,3 +247,26 @@ gain with suspicion until another case shows it.
 Deep with the HTML walkthrough on the dev payouts fixture: 418 s / $2.68 with one writer after
 review, 392 s / $4.03 with separate problem writers, **359 s / $3.28** with a picture writer in
 parallel with the lenses and verifiers writing the problem sections.
+
+## Deep mode on the harder set (2026-11-13)
+
+`JOBS=9 evals/run_hard.sh TAG "/rk:deep --no-html"`. Time is the sum of per-case seconds.
+
+| Version | Planted bugs | Confirmed findings on clean branches | Time | Cost |
+|---|---|---|---|---|
+| Baseline (268fdda) | 28/28 | 0 | 1,923 s | $16.71 |
+| main after #22 | 28/28 | 3 (2 on coupon-admin, 1 on statement-export) | 1,767 s | $17.57 |
+| Terse lens, verifier and report output + framework-default rule | 28/28 | 3 (statement-export 2, structured-logging 1) | 1,468 s | $15.39 |
+| + "below 70 confidence is plausible" rule (structured-logging only, re-run) | n/a | 0 on that case | 79 s | $0.95 |
+
+Where deep spends its time (ingest-v2, 255 s): lenses in parallel ~85 s, verifiers in parallel
+~70 s, final report ~50 s. Each stage is bounded by how much its slowest agent writes, so the
+gain came from asking for shorter candidate JSON and a word budget for the report.
+
+`score.py` counts "Worth a look" items on clean branches as false alarms; the numbers above
+count confirmed findings only. The statement-export findings (no closing total row although
+ADR 0003 item 8 asks for one; a fixed `PATH.tmp` name) are arguably real and were raised with
+the fixture's owner. Quick with the same rules: 28/28, 0 confirmed findings on clean branches,
+601 s, $3.55.
+
+`/rk:fix` on the dev payouts fixture: 7 findings fixed with a test each in 100 s for $0.56.

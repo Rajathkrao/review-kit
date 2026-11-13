@@ -51,6 +51,7 @@ review uses the Codex CLI if installed and logged in, otherwise a different Clau
 | `/rk:refine [file\|folder\|target]` | Make code smaller and more reusable: delete, reuse existing helpers, stdlib, kill one-off abstractions, merge copies, flatten logic. Patches with lines saved; `--apply` makes the edits and tests each |
 | `/rk:explain [file\|folder\|target]` | Understand code: an HTML page with architecture and sequence diagrams, a Python module map, reading order and a step-by-step tour. No bug hunt |
 | `/rk:test [target]` | Finds and runs the tests that cover the change (asks first), mutation-checks them |
+| `/rk:fix [numbers]` | Applies the findings you pick (default: every Critical and Important): failing test first, smallest fix, closest tests run, reverted if it breaks something |
 | `/rk:full [target]` | deep + architecture + refine, then offers tests |
 
 **Target**: nothing (current branch vs its base, plus uncommitted work), `main...feature`, a commit,

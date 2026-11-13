@@ -23,7 +23,7 @@ In Codex, read `references/codex.md` first. Invoke as `$review-kit <mode> [targe
 
 | Part | Values | Default |
 |---|---|---|
-| mode | `review` `quick` `deep` `pr` `spec` `arch` `refine` `explain` `test` `full` (`standards` = `refine`) | `review` |
+| mode | `review` `quick` `deep` `pr` `spec` `arch` `refine` `explain` `test` `fix` `full` (`standards` = `refine`) | `review` |
 | target | empty (current branch + uncommitted), `A..B` / `A...B`, a sha, PR number / `#123` / PR URL, a path | current branch |
 | `--base <ref>` | base for a branch review | upstream, else `origin/HEAD`, `main`, `master` |
 | `--focus "<text>"` | area to weight heavily | none |
@@ -145,8 +145,19 @@ any missing problem entries yourself, then render and give the printed path.
 With `--post`, follow `references/pr.md`. Finally, for a pinned PR or commit review, run
 `python3 "${CLAUDE_SKILL_DIR}/scripts/collect.py" --done "$PKG"`.
 
-After the report, stop. Fix nothing unless asked. When asked to fix ("fix 1 and 3"), apply them in
-severity order, run the closest test after each, and show the evidence.
+After the report, stop. Fix nothing unless asked.
+
+**Fix mode** (`/rk:fix 1 3`, or "fix 1 and 3" after any report). Numbers are the report's finding
+numbers; none given means every Critical and Important finding. If no review is in this
+conversation, run a quick review first, show its report, then fix. For each finding, in severity
+order:
+1. If the project has tests, write the finding's failing test first and run it to see it fail
+   (skip this when the fix is trivial or the code has no test setup; say so).
+2. Make the smallest change that removes the root cause. No drive-by refactors.
+3. Run that test plus the closest existing test file. If something else breaks and you can't fix
+   it in one more try, revert this finding's edits and report it as not applied.
+End with a table: finding, files changed, test command and result. Never commit, push or touch
+"Worth a look" items unless asked; for those, say what fact you would need.
 
 ## Rules for every mode
 
@@ -160,7 +171,7 @@ severity order, run the closest test after each, and show the evidence.
 - **Severity is impact; confidence is certainty.** A rare trigger lowers neither below what the
   code supports; see verification.md.
 - **Say what you did not check**: lenses not run, tests not run, requirements you couldn't verify.
-- **Read-only** (except refine `--apply` and explicit fix requests). Never edit files, move HEAD
+- **Read-only** (except refine `--apply` and fix mode). Never edit files, move HEAD
   or change the index. Repro scripts and test output go
   under `PKG` only, run with `--run` or after the user approves.
 - **Learnings.** When the user rejects a finding with a reason or says "remember …", append one

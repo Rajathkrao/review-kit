@@ -48,6 +48,10 @@ the mode never produces it (e.g. no "Existing PR comments" outside pr mode).
 
 Rules:
 
+- Length: the report is read, not skimmed past. Each finding is at most ~120 words: the
+  description in 2–3 sentences, and Trigger, Impact, Fix and Test one line each (a code sketch
+  only when the fix isn't obvious from one line). The whole report stays under ~900 words plus
+  findings. Writing it is often the slowest step of a review.
 - No findings: write `### Findings` then `No issues found. Checked: <lenses> against <contract>.`
 - Omit empty sections (no "Worth a look" header with nothing under it).
 - Plain words: short sentences, explain a technical term the first time. The reader may never
