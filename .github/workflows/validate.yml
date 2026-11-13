@@ -23,6 +23,7 @@ jobs:
           python -m py_compile skills/review-kit/scripts/*.py evals/score.py
           bash -n skills/review-kit/scripts/codex_review.sh
           bash -n evals/run_case.sh
+          bash -n evals/run_adversarial_baseline.sh
       - name: Regression tests and metadata validation
         run: |
           python -m pip install -r tests/requirements.txt

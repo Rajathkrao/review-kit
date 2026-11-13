@@ -17,8 +17,8 @@ if [ ! -d "$HERE/fixtures" ]; then
   python3 -c 'import os,sys; os.rename(sys.argv[1], sys.argv[2])' "$TMPFX" "$HERE/fixtures" 2>/dev/null || rm -rf "$TMPFX"
 fi
 OUT="$HERE/runs/$NAME"
-[ ! -e "$OUT" ] || { echo "run already exists: $OUT" >&2; exit 2; }
-mkdir -p "$OUT"
+mkdir -p "$HERE/runs"
+mkdir "$OUT" || { echo "run already exists: $OUT" >&2; exit 2; }
 echo '{"execution_status":"failed","reason":"Evaluation has not completed"}' > "$OUT/status.json"
 cp -r "$HERE/fixtures/$FIX" "$OUT/$FIX"
 cd "$OUT/$FIX"

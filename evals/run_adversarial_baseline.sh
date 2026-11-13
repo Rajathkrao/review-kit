@@ -4,13 +4,18 @@
 #   ./run_adversarial_baseline.sh <fixture> <branch> <run-name> [base]
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; PLUGIN="$(dirname "$HERE")"
+[ "$#" -ge 3 ] || { echo 'usage: run_adversarial_baseline.sh FIXTURE BRANCH RUN_NAME [BASE]' >&2; exit 2; }
 FIX=$1; BR=$2; NAME=$3; BASE=${4:-main}
+[[ "$FIX" =~ ^[a-zA-Z0-9_-]+$ && "$NAME" =~ ^[a-zA-Z0-9_-]+$ ]] || { echo 'invalid fixture/run name' >&2; exit 2; }
 if [ ! -d "$HERE/fixtures" ]; then
   TMPFX=$(mktemp -d "$HERE/.fixtures.XXXXXX"); tar xzf "$HERE/fixtures.tgz" -C "$TMPFX"
   python3 -c 'import os,sys; os.rename(sys.argv[1], sys.argv[2])' "$TMPFX" "$HERE/fixtures" 2>/dev/null || rm -rf "$TMPFX"
 fi
-OUT="$HERE/runs/$NAME"; [ ! -e "$OUT" ] || { echo "run exists: $OUT" >&2; exit 2; }
-mkdir -p "$OUT"; cp -r "$HERE/fixtures/$FIX" "$OUT/$FIX"; cd "$OUT/$FIX"; git checkout -q "$BR"
+OUT="$HERE/runs/$NAME"
+mkdir -p "$HERE/runs"
+mkdir "$OUT" || { echo "run exists: $OUT" >&2; exit 2; }
+echo '{"execution_status":"failed","reason":"Evaluation has not completed"}' > "$OUT/status.json"
+cp -r "$HERE/fixtures/$FIX" "$OUT/$FIX"; cd "$OUT/$FIX"; git checkout -q "$BR"
 python3 - "$PLUGIN/skills/review-kit/assets/codex-adversarial-prompt.md" "$BR vs $BASE" "$(git diff -U10 "$BASE"...HEAD)" > "$OUT/prompt.md" <<'PY'
 import sys
 t=open(sys.argv[1]).read()
@@ -23,11 +28,21 @@ PY
 date +%s > "$OUT/start"
 claude -p "$(cat "$OUT/prompt.md")" --allowedTools "Read,Grep,Glob,Bash(git:*)" --output-format json > "$OUT/result.json" 2> "$OUT/stderr.txt"
 date +%s > "$OUT/end"
-python3 - "$OUT" <<'PY'
+python3 - "$OUT" "$PLUGIN/skills/review-kit/scripts" <<'PY'
 import json,sys,re,pathlib
+sys.path.insert(0,sys.argv[2])
+from review_data import validate_codex
 out=pathlib.Path(sys.argv[1]); r=json.loads((out/'result.json').read_text())
-txt=r.get('result','');m=re.search(r'\{.*\}',txt,re.S)
-data=json.loads(m.group(0)) if m else {"findings":[]}
+if not isinstance(r,dict) or r.get('is_error') is not False or r.get('subtype') != 'success':
+    sys.exit('No successful Claude result; evaluation failed')
+txt=r.get('result')
+if not isinstance(txt,str) or not txt.strip():
+    sys.exit('Claude returned an empty report; evaluation failed')
+# Accept an object or one JSON fenced block, never extract an arbitrary object from prose.
+txt=txt.strip()
+if txt.startswith('```json\n') and txt.endswith('```'):
+    txt=txt[len('```json\n'):-3].strip()
+data=validate_codex(json.loads(txt))
 lines=[f"## Adversarial baseline · verdict {data.get('verdict')}","",data.get('summary',''),""]
 for i,f in enumerate(data.get('findings',[]),1):
     lines+= [f"**{i}. {f.get('severity','').title()}: {f.get('title')}**",f"`{f.get('file')}:{f.get('line_start')}-{f.get('line_end')}`",f.get('body',''),f"**Fix:** {f.get('recommendation','')}",f"<sub>confidence {f.get('confidence')}</sub>",""]

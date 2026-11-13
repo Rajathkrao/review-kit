@@ -74,6 +74,8 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/state.py" "$PKG" <stage> [--note "<one line
 Stages: `packaged` (the collector records it), `contract`, `lenses`, `tests`, `verified`,
 `reported`. Right after packaging, store the original arguments:
 `state.py "$PKG" packaged --args "<the arguments you were given>"`.
+Record stages in order. Marking an earlier stage again invalidates downstream caches;
+an already reported run is terminal and requires a fresh run to review again.
 
 Read `$PKG/summary.md` first. It
 holds the stat, file list, commits, size verdict, and purpose-doc candidates. The
@@ -262,9 +264,9 @@ started by another session or agent:
 2. Read `state.json` (mode and args), `meta.json`, `summary.md`, and `contract.md` if present.
    Run `python3 "${CLAUDE_SKILL_DIR}/scripts/state.py" --check-source "$PKG"` before
    reusing any candidates or findings. If it fails (missing source, changed commit, or local
-   edits in committed context), start a fresh run; do not reuse the old results.
+   edits in committed or live context), start a fresh run; do not reuse the old results.
 3. Continue from `next`. Reuse what is on disk: a lens whose `candidates/<lens>.json` exists
    doesn't run again; a valid `findings.json` means verification is done. For a
-   `working-tree` run, if `git rev-parse HEAD` no longer matches `meta.reviewed_commit` or the
-   diff changed, say so and offer a fresh run instead.
+   `working-tree` run, source fingerprints cover HEAD, tracked changes and untracked contents.
+   Older live runs without a fingerprint require a fresh collection.
 4. Keep recording stages, and finish exactly as section 7 says.

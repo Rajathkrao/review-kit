@@ -24,20 +24,23 @@ def commentable_lines(diff_text):
     path = None
     new_ln = None
     hunk = -1
+    in_hunk = False
     for raw in diff_text.splitlines():
         if raw.startswith("diff --git"):
             path, new_ln = None, None
+            in_hunk = False
             continue
-        if raw.startswith("+++ "):
+        if not in_hunk and raw.startswith("+++ "):
             p = raw[4:].strip()
             path = None if p == "/dev/null" else re.sub(r"^b/", "", p)
             continue
-        if raw.startswith("--- "):
+        if not in_hunk and raw.startswith("--- "):
             continue
         m = re.match(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", raw)
         if m:
             new_ln = int(m.group(1))
             hunk += 1
+            in_hunk = True
             continue
         if path is None or new_ln is None:
             continue
@@ -66,7 +69,7 @@ def finding_body(f):
     return "\n".join(parts)
 
 
-def build(pkg: Path):
+def build(pkg: Path, write=True):
     meta = load_object(pkg / "meta.json")
     fx = validate_review(load_object(pkg / "findings.json"), meta)
     if fx["execution_status"] != "completed":
@@ -135,13 +138,14 @@ def build(pkg: Path):
     body += ["", "<sub>Generated with review-kit for Claude Code. React 👍 / 👎 to tell us if this was useful.</sub>"]
 
     payload = {"commit_id": head, "event": "COMMENT", "body": "\n".join(body), "comments": inline}
-    (pkg / "review-payload.json").write_text(json.dumps(payload, indent=2))
     preview = [f"# Review to post on {owner}/{repo}#{num} (commit {head[:10]})", "", "## Summary comment", "",
                payload["body"], ""]
     for c in inline:
         rng = f"{c.get('start_line', c['line'])}-{c['line']}" if c.get("start_line") else str(c["line"])
         preview += [f"## Inline: {c['path']}:{rng}", "", c["body"], ""]
-    (pkg / "review-preview.md").write_text("\n".join(preview))
+    if write:
+        (pkg / "review-payload.json").write_text(json.dumps(payload, indent=2))
+        (pkg / "review-preview.md").write_text("\n".join(preview))
     return payload, (owner, repo, num, head)
 
 
@@ -180,7 +184,10 @@ def main():
     ap.add_argument("--body-file")
     a = ap.parse_args()
     pkg = Path(a.pkg)
-    payload, (owner, repo, num, head) = build(pkg)
+    approved = load_object(pkg / "review-payload.json") if a.submit else None
+    payload, (owner, repo, num, head) = build(pkg, write=not a.submit)
+    if a.submit and payload != approved:
+        raise ValueError("Review changed since preview; rebuild and approve the new preview before submitting")
 
     if a.reply:
         check_eligible(owner, repo, num, head)
