@@ -43,7 +43,7 @@ the mode never produces it (e.g. no "Existing PR comments" outside pr mode).
 - <title> — <the disproof, with file:line>  (one line each; the reader can overrule)
 
 ### Not reported / not checked
-<findings cut by the cap, one line each> · <k> minor hidden (`--all`) · Not checked: <lenses not run, tests not run, unreachable services>
+<k> minor hidden (`--all`) · Not checked: <lenses not run, tests not run, unreachable services>
 ```
 
 Rules:

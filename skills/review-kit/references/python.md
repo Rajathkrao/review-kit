@@ -60,6 +60,9 @@ change touches. Each item is a lead: report it only with a trigger in this code.
   leaking fields; missing auth dependency on a new route.
 - Flask/Django: user input reaching templates with `|safe` / `mark_safe`; CSRF exemptions;
   `request.args` trusted for ids without an ownership check (IDOR); open redirects via `next`.
+- Decorators without `functools.wraps`: every wrapped Flask view gets the endpoint name
+  `wrapper`, so registering a second one raises `AssertionError` at startup; FastAPI and click
+  lose the signature they introspect; `__name__`/`__doc__` and pickling break.
 - HTTP clients: `requests` / `httpx` without a timeout (hangs forever); `verify=False`;
   retrying non-idempotent POSTs.
 

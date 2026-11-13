@@ -49,6 +49,7 @@ review uses the Codex CLI if installed and logged in, otherwise a different Clau
 | `/rk:spec [target]` | Requirement-by-requirement check against the ADR / spec / plan |
 | `/rk:arch [target]` | Design, boundaries, contracts, types, and whether the approach is right |
 | `/rk:refine [file\|folder\|target]` | Make code smaller and more reusable: delete, reuse existing helpers, stdlib, kill one-off abstractions, merge copies, flatten logic. Patches with lines saved; `--apply` makes the edits and tests each |
+| `/rk:explain [file\|folder\|target]` | Understand code: an HTML page with architecture and sequence diagrams, a Python module map, reading order and a step-by-step tour. No bug hunt |
 | `/rk:test [target]` | Finds and runs the tests that cover the change (asks first), mutation-checks them |
 | `/rk:full [target]` | deep + architecture + refine, then offers tests |
 
@@ -117,7 +118,11 @@ execution and verification evidence, findings (file:line, trigger, impact, fix, 
 spec compliance, PR comment verdicts, dismissed candidates with their disproof, and what was not
 checked. Findings are numbered, so "fix 1 and 3" works.
 
-The HTML walkthrough (on by default in deep, full, pr and arch) shows your real code in execution
+The HTML walkthrough (on by default in deep, full, pr, arch and explain) opens with **the big
+picture**: an architecture diagram of the parts the change touches (changed parts highlighted,
+problem badges linked to the finding), sequence diagrams of the main flow or the failing race, and,
+for Python, a module map drawn from the imports so you see the blast radius. Then a suggested
+reading order (foundations first), a review-effort score, and your real code in execution
 order, with each problem pinned to its line, the sequence of events that triggers it, root cause,
 impact, a fix as a diff and a test that fails today. It is self-contained and works offline. It is
 written to the scratch folder in your system temp directory and its path is printed.

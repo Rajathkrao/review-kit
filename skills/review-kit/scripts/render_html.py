@@ -8,7 +8,6 @@ taken from the diff. Writes PKG/review.html. Self-contained: no network, no exte
 """
 import datetime as _dt
 import html
-import json
 import re
 import sys
 from pathlib import Path
@@ -16,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from review_data import load_object, validate_review  # noqa: E402
 from collect import validate_source  # noqa: E402
+import diagrams  # noqa: E402
 
 SEV_ORDER = {"critical": 0, "important": 1, "minor": 2}
 SEV_LABEL = {"critical": "Critical", "important": "Important", "minor": "Minor"}
@@ -382,6 +382,10 @@ footer code{font-size:12px;overflow-wrap:anywhere}
   .lede{font-size:17px}
   .ln{grid-template-columns:2.8em 1em max-content}
 }
+.effort{display:inline-flex;gap:3px;vertical-align:-1px}.effort i{width:10px;height:10px;border-radius:2px;background:var(--rule)}.effort i.on{background:var(--accent)}
+.pic-h{font:600 17px/1.4 var(--sans);margin:28px 0 4px}
+ol.order{padding-left:1.4em;max-width:80ch}ol.order li{margin:0 0 10px}ol.order .role{color:var(--soft)}
+.wal li{margin:0 0 10px}
 @media print{nav.rail{display:none}.layout{display:block}.copy{display:none}body{background:#fff}}
 """
 
@@ -437,7 +441,7 @@ def render(pkg: Path):
     meta = load_object(pkg / "meta.json")
     fx = validate_review(load_object(pkg / "findings.json"), meta)
     ex = load_object(pkg / "explainer.json", optional=True)
-    contract = read(pkg / "contract.md")
+    contract = read(pkg / "contract.md") or str(ex.get("contract") or "")
     tests = read(pkg / "test-results.md")
     src = Source(pkg, meta)
 
@@ -457,12 +461,36 @@ def render(pkg: Path):
             f["id"] = f"F{n}"
             used.add(f["id"])
     by_id = {f["id"]: f for f in findings}
-    details = ex.get("problems") or {}
+    details = dict(ex.get("problems") or {})
+    # Problem write-ups may come from parallel writers, one file per group of findings.
+    for part in sorted(pkg.glob("problems-*.json")):
+        extra = load_object(part, optional=True)
+        details.update({k: v for k, v in extra.items() if isinstance(v, dict)})
+    # Ids given before verification can have gaps or be out of severity order: number them as the
+    # report does (F1 = first shown) and carry the new ids into every reference.
+    renum = {f["id"]: f"F{i}" for i, f in enumerate(findings, 1)}
+    if any(k != v for k, v in renum.items()):
+        swap = lambda ids: [renum.get(x, x) for x in ids or []]
+        for f in findings:
+            f["id"] = renum[f["id"]]
+        by_id = {f["id"]: f for f in findings}
+        details = {renum.get(k, k): v for k, v in details.items()}
+        for s in ex.get("steps") or []:
+            s["finding_ids"] = swap(s.get("finding_ids"))
+        for node in (ex.get("architecture") or {}).get("nodes") or []:
+            node["finding_ids"] = swap(node.get("finding_ids"))
+        for q in ex.get("sequences") or []:
+            for m in q.get("messages") or []:
+                if m.get("finding_id"):
+                    m["finding_id"] = renum.get(m["finding_id"], m["finding_id"])
 
     verdict_txt = VERDICT.get(fx.get("verdict"), "Inconclusive")
     verdict_cls = {"dont-ship": "crit", "ship-after-fixes": "imp", "ship": "ok"}.get(fx.get("verdict"), "imp")
+    explain_only = fx.get("mode") == "explain"
     if status != "completed":
         verdict_txt, verdict_cls = f"Review {status.replace('-', ' ')}: no verdict", "imp"
+    elif explain_only:
+        verdict_txt, verdict_cls = "Walkthrough only, not reviewed for bugs", "imp"
     title = ex.get("title") or meta.get("description", "Code review")
     counts = {k: sum(1 for f in findings if f.get("severity") == k) for k in SEV_ORDER}
     sev_text = ", ".join(f"{v} {k}" for k, v in counts.items() if v) or "none"
@@ -611,7 +639,7 @@ def render(pkg: Path):
         f'{e({"met": "Met", "missing": "Missing", "misunderstood": "Misunderstood", "cannot_verify": "Can’t verify"}.get(s.get("status"), s.get("status")))}'
         f'</td><td>{inline_md(s.get("evidence", ""))}</td></tr>'
         for s in fx.get("spec_status", []))
-    dropped = "".join(f'<li><strong>{inline_md(d.get("title"))}</strong> (score {e(d.get("confidence"))}). {inline_md(d.get("reason", ""))}</li>'
+    dropped = "".join(f'<li><strong>{inline_md(d.get("title"))}</strong>{(" (confidence " + e(d.get("confidence")) + ")") if d.get("confidence") is not None else ""}. {inline_md(d.get("reason", ""))}</li>'
                       for d in fx.get("dropped", []))
     unchecked = "".join(f"<li>{inline_md(x)}</li>" for x in fx.get("not_checked", []) + fx.get("declined", []))
     concepts = "".join(f'<dt>{e(c.get("term"))}</dt><dd>{inline_md(c.get("meaning"))}</dd>' for c in ex.get("key_concepts", []))
@@ -623,10 +651,64 @@ def render(pkg: Path):
         f'<tr><td><code>{e(f.get("path"))}</code></td><td>{e(f.get("status"))}</td><td>+{f.get("added")} −{f.get("deleted")}</td></tr>'
         for f in meta.get("files", []))
 
+    # --- the big picture: architecture, flows, module map (all drawn here, never by the model)
+    pics = []
+    arch = ex.get("architecture")
+    if isinstance(arch, dict):
+        svg = diagrams.architecture(arch, by_id)
+        if svg:
+            pics.append(f'<figure class="dg-wrap">{svg}<figcaption>{inline_md(arch.get("caption") or "How the parts of this change fit together. Arrows show calls and data flow.")}</figcaption>'
+                        '<div class="legend"><span class="lg-changed">changed in this change</span><span class="lg-crit">has a problem (badge links to it)</span><span class="lg-ext">external system</span></div></figure>')
+    seqs = ex.get("sequences") or ([ex["sequence"]] if isinstance(ex.get("sequence"), dict) else [])
+    for q in seqs:
+        if isinstance(q, dict):
+            svg = diagrams.sequence(q, by_id)
+            if svg:
+                pics.append(f'<h3 class="pic-h">{e(q.get("title") or "What happens, in order")}</h3><figure class="dg-wrap">{svg}'
+                            f'<figcaption>{inline_md(q.get("caption") or "Each arrow is one call or message, top to bottom. Dashed arrows are replies or background work.")}</figcaption></figure>')
+    if src.root is not None:
+        try:
+            mod = diagrams.import_graph(src.root, [f.get("path", "") for f in meta.get("files", []) if f.get("status") != "deleted"])
+        except (OSError, ValueError, RecursionError):
+            mod = {}
+        if mod.get("nodes") and len(mod["nodes"]) > 1:
+            pics.append('<h3 class="pic-h">Python modules touched</h3><figure class="dg-wrap">' + diagrams.architecture(mod)
+                        + '<figcaption>Drawn from the import statements: an arrow means "imports". Changed modules are highlighted; their direct importers and imports are shown so you can see the blast radius.</figcaption></figure>')
+    big = ""
+    if pics:
+        big = f'''
+    <section id="picture">
+      <h2 class="sec">The big picture</h2>
+      <p class="sec-note">Read this first: the parts, how a request or job moves through them, and where the problems sit.</p>
+      {"".join(pics)}
+    </section>'''
+
+    # --- reading order (like a change stack: foundations first)
+    order_items = sorted((c for c in ex.get("changed_files", []) if isinstance(c, dict) and c.get("order")),
+                         key=lambda c: c.get("order"))
+    reading = ""
+    if order_items:
+        reading = '<h3 class="pic-h">Suggested reading order</h3><ol class="order">' + "".join(
+            f'<li><code>{e(c.get("path"))}</code> <span class="role">{inline_md(c.get("role", ""))}</span></li>' for c in order_items) + '</ol>'
+
+    # --- review effort, 1 (minutes) to 5 (an afternoon), from size, spread and risk
+    changed_lines = int(meta.get("added", 0)) + int(meta.get("deleted", 0))
+    effort = 1 + (changed_lines > 80) + (changed_lines > 300) + (changed_lines > 800) + (len(meta.get("risk") or []) >= 3)
+    effort = min(5, int(ex.get("review_effort") or effort))
+    effort_html = '<span class="effort" aria-hidden="true">' + "".join(f'<i class="{"on" if k < effort else ""}"></i>' for k in range(5)) + f'</span> {effort}/5'
+
+    plausible = "".join(
+        f'<li><strong>{inline_md(p.get("title"))}</strong> <code>{e(p.get("file", ""))}{(":" + str(p["line_start"])) if p.get("line_start") else ""}</code>. '
+        f'Check: {inline_md(p.get("check", ""))}</li>' for p in fx.get("plausible", []) if isinstance(p, dict))
+
     nav = ['<nav class="rail" aria-label="Contents"><h2>On this page</h2><ol>',
            '<li><a href="#top">Summary</a></li>']
+    if big:
+        nav.append('<li><a href="#picture">The big picture</a></li>')
     if steps:
         nav.append('<li><a href="#walkthrough">How the code works</a></li>')
+    if plausible:
+        nav.append('<li><a href="#plausible">Worth a look</a></li>')
     nav.append('</ol>')
     if steps:
         nav.append('<h2>Walkthrough</h2><ol>' + "".join(
@@ -636,7 +718,7 @@ def render(pkg: Path):
             f'<li><a href="#{e(f["id"])}"><span class="tag" style="color:var(--{ {"critical": "crit", "important": "imp"}.get(f.get("severity"), "min")})">{e(f["id"])}</span>{e(f.get("title"))}</a></li>'
             for f in findings) + '</ol>')
     more = [("spec", "Requirements", spec_rows), ("tests", "Test evidence", tests), ("concepts", "Terms", concepts),
-            ("try", "Check it yourself", tryit), ("files", "Changed files", files_rows), ("dropped", "Not reported", dropped or unchecked)]
+            ("try", "Check it yourself", tryit), ("files", "Changed files", files_rows), ("dropped", "Dismissed", dropped or unchecked)]
     nav.append('<h2>More</h2><ol>' + "".join(f'<li><a href="#{k}">{t}</a></li>' for k, t, v in more if v) + '</ol></nav>')
 
     overview = ""
@@ -652,7 +734,7 @@ def render(pkg: Path):
       <h2 class="sec">How the code works</h2>
       <p class="sec-note">The change in the order it runs, starting at <code>{e(ex.get("entry_point", "the entry point"))}</code>. Code is read from the reviewed commit; highlighted lines carry a problem.</p>
       {"".join(step_html)}
-      {(f'<p class="sec-note">Also in this change: ' + ", ".join(f'<a href="#{e(o)}">{e(o)}</a>' for o in orphans) + ".</p>") if orphans else ""}
+      {('<p class="sec-note">Also in this change: ' + ", ".join(f'<a href="#{e(o)}">{e(o)}</a>' for o in orphans) + ".</p>") if orphans else ""}
     </section>'''
     elif findings:
         walk = '<section><p class="sec-note">No walkthrough was written for this run. Problems are explained below.</p></section>'
@@ -664,39 +746,45 @@ def render(pkg: Path):
       <p class="sec-note">Most severe first. Each one shows how it breaks, the code involved, why it happens, what it costs, and how to fix and prove it.</p>
       {"".join(prob_html)}
     </section>'''
+    elif explain_only:
+        probs = '<section id="problems"><h2 class="sec">Problems</h2><p class="sec-note">This page explains the code; it was not reviewed for bugs. Run <code>/rk:review</code> on the same target for that.</p></section>'
     elif status == "completed":
         probs = f'<section id="problems"><h2 class="sec">Problems</h2><p class="clean">No issues found. Nothing survived verification. {inline_md(fx.get("summary", ""))}</p></section>'
     else:
         probs = '<section id="problems"><h2 class="sec">Problems</h2><p class="clean">No clean conclusion: the review did not complete ({e(status)}). See what was not checked below.</p></section>'
 
     sections = []
+    if plausible:
+        sections.append('<section id="plausible"><h2 class="sec">Worth a look</h2><p class="sec-note">Reachable and not disproven, but one fact the review could not see decides each one. Each line says what to check.</p>'
+                        f'<ul class="wal">{plausible}</ul></section>')
     if spec_rows:
         sections.append(f'<section id="spec"><h2 class="sec">Requirements</h2><p class="sec-note">Checked against {inline_md(contract_src or "the stated purpose")}.</p>'
                         f'<table class="req"><thead><tr><th>Requirement</th><th>Status</th><th>Evidence</th></tr></thead><tbody>{spec_rows}</tbody></table>'
                         + (f'<details><summary>The full contract used</summary><pre class="raw">{e(contract)}</pre></details>' if contract else "") + '</section>')
-    sections.append(f'<section id="tests"><h2 class="sec">Test evidence</h2>'
+    sections.append('<section id="tests"><h2 class="sec">Test evidence</h2>'
                     + (f'<pre class="raw">{e(tests)}</pre>' if tests.strip() else '<p class="sec-note">No tests were run in this review. Findings were confirmed by reading the code.</p>') + '</section>')
     if concepts:
         sections.append(f'<section id="concepts"><h2 class="sec">Terms used here</h2><dl class="terms">{concepts}</dl></section>')
     if tryit:
         sections.append(f'<section id="try"><h2 class="sec">Check it yourself</h2><ul class="checks">{tryit}</ul></section>')
-    sections.append(f'<section id="files"><h2 class="sec">Changed files</h2><table class="req"><tbody>{files_rows}</tbody></table></section>')
+    sections.append(f'<section id="files"><h2 class="sec">Changed files</h2>{reading}<table class="req"><tbody>{files_rows}</tbody></table></section>')
     if dropped or unchecked:
-        sections.append('<section id="dropped"><h2 class="sec">Not reported</h2><p class="sec-note">Raised during the review but dropped after verification, or out of scope. Listed so you can disagree.</p>'
-                        + (f'<details><summary>{len(fx.get("dropped", []))} candidates dropped after verification</summary><ul>{dropped}</ul></details>' if dropped else "")
+        sections.append('<section id="dropped"><h2 class="sec">Dismissed</h2><p class="sec-note">Raised during the review and disproved by the code, or out of scope. Each says why, so you can overrule it.</p>'
+                        + (f'<details open><summary>{len(fx.get("dropped", []))} candidates dismissed, with the disproof</summary><ul>{dropped}</ul></details>' if dropped else "")
                         + (f'<details><summary>Not checked or set aside</summary><ul>{unchecked}</ul></details>' if unchecked else "") + '</section>')
 
     facts = [("Verdict basis", f"{sev_text} problem{'s' if len(findings) != 1 else ''}"),
              ("Checked against", contract_src or "commit messages and code"),
              ("Size", f"{len(meta.get('files', []))} files, +{meta.get('added', 0)} −{meta.get('deleted', 0)}"),
              ("Tests", tests_line),
+             ("Review effort", effort_html),
              ("Reviewed commit", (meta.get("reviewed_commit") or "")[:10] or "not recorded")]
-    facts_html = '<dl class="facts">' + "".join(f'<div><dt>{e(k)}</dt><dd>{inline_md(v)}</dd></div>' for k, v in facts) + '</dl>'
+    facts_html = '<dl class="facts">' + "".join(f'<div><dt>{e(k)}</dt><dd>{v if k == "Review effort" else inline_md(v)}</dd></div>' for k, v in facts) + '</dl>'
 
     page = f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(title)}: code review</title>
-<style>{CSS}</style></head>
+<style>{CSS}{diagrams.CSS}</style></head>
 <body><div class="layout">
   {"".join(nav)}
   <main id="top">
@@ -707,6 +795,7 @@ def render(pkg: Path):
     {f'<div class="narr"><p>{inline_md(fx.get("summary"))}</p></div>' if ex.get("one_liner") and fx.get("summary") else ""}
     {facts_html}
     {overview}
+    {big}
     {walk}
     {probs}
     {"".join(sections)}
