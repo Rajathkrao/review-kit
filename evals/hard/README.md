@@ -18,7 +18,7 @@ skill is mainly used for, and it is built to make three things show up:
 | Case | Kind | Size | Planted | Contract |
 |---|---|---|---|---|
 | `py-ledger:feature/multi-currency` | money, refactor | 20 files, +1098/−138 | 5 (L1–L5) | `docs/adr/0003-multi-currency.md` |
-| `py-ledger:feature/statement-export` | clean | 3 files, +107 | 0 | none |
+| `py-ledger:feature/statement-export` | clean | 3 files, +127 | 0 | none |
 | `py-uploads:feature/bundle-upload` | Flask, file security | 6 files, +157/−6 | 4 (U1–U4) + 2 nice | `docs/bundles.md` |
 | `py-uploads:feature/safe-content-type` | clean | 2 files, +56/−1 | 0 | none |
 | `py-jobs:feature/concurrent-dispatch` | asyncio | 11 files, +270/−37 | 5 (J1–J5) + 1 nice | `docs/dispatch.md` |
@@ -87,9 +87,10 @@ evals/score.py evals/runs/deep-jobs/report.md py-jobs:feature/concurrent-dispatc
 
 `score.py` reads only the final report text (the `result` in `stream.jsonl`, saved as
 `report.md`), not run-folder files. It sorts each expected defect into **reported**,
-**dismissed** (it appears only in a "not reported / dropped / dismissed" section) or **missed**.
-A report that lists what its verifier threw away gets no credit for those items. On clean
-cases, every critical, important or unrated finding block counts as a false alarm.
+**worth** (only an unconfirmed "worth a look" item), **dismissed** (only under "not reported /
+dropped / dismissed") or **missed**. Only **reported** counts as recall. On clean cases, every
+confirmed critical, important or unrated finding block counts as a false alarm; "worth a look"
+items are counted separately (`worth_a_look`), since they are labelled as unconfirmed.
 `status.json` records `seconds` (wall clock), `api_seconds`, `cost_usd` and `num_turns`.
 
 ## Checked

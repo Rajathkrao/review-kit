@@ -11,8 +11,9 @@ def rows(store, account):
     buf = io.StringIO()
     n = export_statement(store, account, buf)
     parsed = list(csv.reader(io.StringIO(buf.getvalue())))
-    assert len(parsed) == n + 1
-    return parsed
+    assert len(parsed) == n + 2
+    assert parsed[-1][1] == "TOTAL"
+    return parsed[:-1]
 
 
 def test_running_balance(store):
@@ -41,6 +42,21 @@ def test_negative_amounts_stay_numbers(store):
     _, row = rows(store, "cash")
     assert row[2] == "-5.00"
     assert row[4] == "'=cmd"
+
+
+def test_closing_total(store):
+    store.post("t1", [("cash", 1_000), ("suspense", -1_000)], memo="a")
+    store.post("t2", [("cash", -250), ("suspense", 250)], memo="b")
+    buf = io.StringIO()
+    export_statement(store, "cash", buf)
+    last = list(csv.reader(io.StringIO(buf.getvalue())))[-1]
+    assert last == ["", "TOTAL", "", "7.50", ""]
+
+
+def test_empty_account_has_header_and_zero_total(store):
+    buf = io.StringIO()
+    assert export_statement(store, "cash", buf) == 0
+    assert list(csv.reader(io.StringIO(buf.getvalue()))) == [HEADER, ["", "TOTAL", "", "0.00", ""]]
 
 
 def test_unknown_account(store):
