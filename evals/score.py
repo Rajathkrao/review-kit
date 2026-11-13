@@ -8,6 +8,7 @@ always read the report too.
 
 Each expected defect is classified as
   reported   a finding block names the file (basename) and one of the defect's keywords
+  worth      it appears only as an unconfirmed "worth a look" item (not counted as recall)
   dismissed  it only appears in a section for dropped / dismissed / not-reported candidates
              (so a report that lists what its verifier threw away gets no credit for those)
   missed     neither
@@ -25,6 +26,7 @@ KEYS = json.loads((HERE / "answer-keys.json").read_text())
 
 FILE_RE = re.compile(r"[\w/.-]+\.(tsx?|jsx?|cs|py|html|cshtml|razor|go|java|scss|css|json|ya?ml|md|txt)\b")
 HEAD_RE = re.compile(r"^(#{1,6}\s+.+|\*\*[^*\n]+\*\*:?\s*)$")
+WORTH_HEAD = re.compile(r"worth a look|unverified|unconfirmed|plausible|needs? (a )?(human|manual) check|to check", re.I)
 DISMISSED_HEAD = re.compile(r"not reported|dismiss|dropped|rejected|false.positive|lower confidence|declined|"
                             r"ruled out|filtered|discarded|not a bug|considered|what was not|refuted|withdrawn", re.I)
 OTHER_HEAD = re.compile(r"spec compliance|requirement|existing pr comments|verification|scope|checked against|"
@@ -44,7 +46,8 @@ def sections(report: str):
         if HEAD_RE.match(stripped) and not SEV_RE.match(stripped.strip("*# ").split(":")[0]) \
                 and not re.match(r"^(#{1,6}\s*)?\**\s*\d+\.", stripped):
             title = stripped.strip("#* :")
-            new = ("dismissed" if DISMISSED_HEAD.search(title) else
+            new = ("worth" if WORTH_HEAD.search(title) else
+                   "dismissed" if DISMISSED_HEAD.search(title) else
                    "other" if OTHER_HEAD.search(title) and not FINDING_HEAD.search(title) else
                    "findings" if FINDING_HEAD.search(title) else None)
             if new is not None:
@@ -54,7 +57,7 @@ def sections(report: str):
     yield kind, "\n".join(buf)
 
 
-NO_ISSUES = re.compile(r"\bno (?:\w+ ){0,4}issues (?:were )?found\b", re.I)
+NO_ISSUES = re.compile(r"\bno (?:\w+ ){0,4}issues(?: (?:were )?found\b|\.)", re.I)
 
 
 def finding_blocks(text: str) -> list[str]:
@@ -77,7 +80,7 @@ def severity(block: str) -> str:
 
 
 def score(report: str, key: dict) -> dict:
-    found, dismissed = [], []
+    found, dismissed, worth = [], [], []
     parts = list(sections(report))
     if not any(k == "findings" for k, _ in parts):
         # No findings heading at all (a free-form report): treat the opening text as findings.
@@ -87,10 +90,14 @@ def score(report: str, key: dict) -> dict:
             found += finding_blocks(text)
         elif kind == "dismissed":
             dismissed += dismissed_blocks(text)
+        elif kind == "worth":
+            worth += [b for b in dismissed_blocks(text) if FILE_RE.search(b) and not WORTH_HEAD.search(b.strip().splitlines()[0])]
 
     def classify(item):
         if any(hit(item, b) for b in found):
             return "reported"
+        if any(hit(item, b) for b in worth):
+            return "worth"
         if any(hit(item, b) for b in dismissed):
             return "dismissed"
         return "missed"
@@ -103,9 +110,11 @@ def score(report: str, key: dict) -> dict:
         sevs[severity(b)] = sevs.get(severity(b), 0) + 1
     out = {"finding_blocks": len(found), "severities": sevs,
            "recall": f"{sum(v == 'reported' for v in must.values())}/{len(must)}",
-           "must_find": must, "nice": nice, "bait_reported": [k for k, v in bait.items() if v == "reported"]}
+           "must_find": must, "nice": nice, "bait_reported": [k for k, v in bait.items() if v == "reported"],
+           "worth_a_look": len(worth)}
     if key.get("clean"):
-        # Any reported critical/important block on a correct change is a false alarm.
+        # Any confirmed critical/important block on a correct change is a false alarm.
+        # Unconfirmed "worth a look" items are counted separately (worth_a_look).
         out["false_alarms"] = sum(n for s, n in sevs.items() if s in ("critical", "important", "high", "medium", "unknown"))
     return out
 
@@ -133,22 +142,24 @@ def suite(tag: str, as_json: bool) -> None:
     if as_json:
         print(json.dumps(rows, indent=1))
         return
-    tot_must = tot_rep = tot_dis = fa = 0
+    tot_must = tot_rep = tot_dis = tot_worth = fa = wal = 0
     secs = cost = 0.0
-    print(f"| case | recall | dismissed | false alarms | time | cost |\n|---|---|---|---|---|---|")
+    print("| case | recall | worth a look only | dismissed | false alarms | worth-a-look items | time | cost |\n"
+          "|---|---|---|---|---|---|---|---|")
     for r in rows:
         if "error" in r:
-            print(f"| {r['case']} | {r.get('execution_status') or 'error'}: {r.get('reason') or r['error']} | | | | |")
+            print(f"| {r['case']} | {r.get('execution_status') or 'error'}: {r.get('reason') or r['error']} | | | | | | |")
             continue
         must = r["must_find"]
         rep = sum(v == "reported" for v in must.values())
         dis = [k for k, v in must.items() if v == "dismissed"]
-        tot_must += len(must); tot_rep += rep; tot_dis += len(dis)
-        fa += r.get("false_alarms", 0)
+        wor = [k for k, v in must.items() if v == "worth"]
+        tot_must += len(must); tot_rep += rep; tot_dis += len(dis); tot_worth += len(wor)
+        fa += r.get("false_alarms", 0); wal += r.get("worth_a_look", 0)
         secs += r.get("seconds") or 0; cost += r.get("cost_usd") or 0
-        print(f"| {r['case']} | {r['recall'] if must else 'clean'} | {', '.join(dis) or '-'} | "
-              f"{r.get('false_alarms', '-')} | {r.get('seconds', '?')} s | ${(r.get('cost_usd') or 0):.2f} |")
-    print(f"| **total** | **{tot_rep}/{tot_must}** | {tot_dis} | {fa} | {secs:.0f} s | ${cost:.2f} |")
+        print(f"| {r['case']} | {r['recall'] if must else 'clean'} | {', '.join(wor) or '-'} | {', '.join(dis) or '-'} | "
+              f"{r.get('false_alarms', '-')} | {r.get('worth_a_look', 0)} | {r.get('seconds', '?')} s | ${(r.get('cost_usd') or 0):.2f} |")
+    print(f"| **total** | **{tot_rep}/{tot_must}** | {tot_worth} | {tot_dis} | {fa} | {wal} | {secs:.0f} s | ${cost:.2f} |")
 
 
 def main(argv):

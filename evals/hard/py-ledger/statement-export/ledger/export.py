@@ -17,7 +17,8 @@ def _safe_text(value: str) -> str:
 
 
 def export_statement(store: Store, account_id: str, out: TextIO) -> int:
-    """Write the account's entries with a running balance. Returns the number of rows written.
+    """Write the account's entries with a running balance, then a closing total row (ADR 0003 #8:
+    statements list every entry and a closing total). Returns the number of entry rows written.
 
     Amounts are written as plain numbers (format_cents without thousands separators) so the
     spreadsheet can sum them; only the memo is free text from bank files and needs neutralising.
@@ -37,4 +38,7 @@ def export_statement(store: Store, account_id: str, out: TextIO) -> int:
             _safe_text(e.memo),
         ])
         count += 1
+    total = format_cents(running).replace(",", "")
+    # Amount cell left empty so a SUM over the amount column is not doubled.
+    writer.writerow(["", "TOTAL", "", total, ""])
     return count
