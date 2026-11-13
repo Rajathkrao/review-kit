@@ -9,6 +9,7 @@ FIX=$1; BR=$2; NAME=$3; BASE=${4:-main}
 [[ "$FIX" =~ ^[a-zA-Z0-9_-]+$ && "$NAME" =~ ^[a-zA-Z0-9_-]+$ ]] || { echo 'invalid fixture/run name' >&2; exit 2; }
 if [ ! -d "$HERE/fixtures" ]; then
   TMPFX=$(mktemp -d "$HERE/.fixtures.XXXXXX"); tar xzf "$HERE/fixtures.tgz" -C "$TMPFX"
+  python3 "$HERE/build_hard_fixtures.py" "$TMPFX" >/dev/null
   python3 -c 'import os,sys; os.rename(sys.argv[1], sys.argv[2])' "$TMPFX" "$HERE/fixtures" 2>/dev/null || rm -rf "$TMPFX"
 fi
 OUT="$HERE/runs/$NAME"

@@ -1,0 +1,9 @@
+{
+  "main_message": "shop: orders and coupons models, cart page",
+  "branches": [
+    {"name": "feature/coupon-redemption", "dir": "coupons",
+     "message": "Coupon redemption with usage limits (docs/coupons.md)\n\nCustomers can apply a coupon on the cart page; coupons get an optional max_uses\nand redemptions are recorded per customer."},
+    {"name": "feature/coupon-admin", "dir": "admin",
+     "message": "Admin screens for coupons\n\nMarketing manages coupons in the Django admin: search by code, filter by active, bulk deactivate."}
+  ]
+}

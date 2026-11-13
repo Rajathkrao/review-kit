@@ -1,0 +1,14 @@
+<h1>Your cart</h1>
+{% for message in messages %}<p class="{{ message.tags }}">{{ message }}</p>{% endfor %}
+<p>Subtotal: {{ order.subtotal }} €</p>
+{% if order.coupon %}
+  <p class="coupon">{{ order.coupon.code }}: {{ order.coupon.description|safe }}</p>
+  <p>Discount: −{{ order.discount }} €</p>
+{% else %}
+  <form method="post" action="{% url 'apply-coupon' order.pk %}">
+    {% csrf_token %}
+    <input name="code" placeholder="Coupon code" maxlength="32">
+    <button>Apply</button>
+  </form>
+{% endif %}
+<p>Total: {{ order.total }} €</p>

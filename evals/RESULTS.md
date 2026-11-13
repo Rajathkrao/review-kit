@@ -190,3 +190,40 @@ Takeaways: quick matches the plain adversarial review on detection and adds the 
 (the ADR-only bug) at about twice its cost. Deep costs ~4× quick for the same detection on these
 fixtures; use it for the walkthrough page, PR posting, and high-stakes changes. The completion
 gate (#16): after it, 6/6 deep runs ran the full pipeline (before it, 2 of 7 skipped steps).
+
+# Harder Python eval set (2026-11-13)
+
+The five original fixtures were saturated: quick and deep found every planted bug. `evals/hard/`
+adds 5 buggy Python branches (28 planted bugs, each reproduced by running the code) and 4 clean
+ones. See `evals/hard/README.md` for each case and the public bug class it comes from. These are
+single real headless runs (Claude Code 2.1.323) at main 268fdda, scored by the new
+`score.py --suite` and then checked by reading every report.
+
+| Case | `/rk:quick` | `/rk:deep` |
+|---|---|---|
+| py-ledger multi-currency (5 bugs, 1,236-line diff, collector `too-large`) | 5/5 · 132 s · $0.88 | 5/5 · 394 s · $4.12 |
+| py-uploads bundle upload (4) | 4/4 · 144 s · $0.78 | 4/4 · 337 s · $2.84 |
+| py-jobs concurrent dispatch (5) | 5/5 · 117 s · $0.67 | 5/5 · 393 s · $3.45 |
+| py-shop coupon redemption (5) | 5/5 · 94 s · $0.58 | 5/5 · 290 s · $2.54 |
+| py-ingest v2 (9) | **7/9**: H6 cut by the 7-finding cap, H8 (missing `functools.wraps`) missed | 9/9 · 509 s · $3.76 |
+| **Planted bugs found** | **26/28** · 603 s · $3.57 | **28/28** · 1,923 s · $16.71 |
+| Clean branches (4): false alarms | 0 | 0 |
+
+Takeaways:
+- Quick no longer scores 100%. The two bugs it misses are a cap problem (it reported 7 and listed
+  the 8th as cut) and one real miss.
+- Deep still finds everything. It costs about 4.7× quick and takes about 3.2× as long. On the
+  original set the ratio was 4×.
+- Neither mode dropped a real bug in its verifier on this set. The dismissed-vs-reported split in
+  `score.py` will show it if a later version does.
+- Clean branches: in the first runs, both modes reported issues on three of my "clean" branches,
+  and they were right: a CSV export that truncated the target file before checking the account;
+  `queryset.update()` on a queryset ordered by an aggregate annotation, which raises `FieldError`
+  in Django 5.1; and a deny-list of content types that missed `+xml` types. I fixed the fixtures
+  and re-ran them (and fixed one weak test that deep flagged as well). All four are clean in both
+  modes now.
+
+What still separates versions: quick's recall on py-ingest, false alarms on the clean branches,
+and above all time and cost, since deep's detection is saturated here too. A case deep misses
+probably needs bugs that only show up when the code is run, or several interacting files that
+are not in the diff.

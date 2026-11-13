@@ -20,10 +20,11 @@ jobs:
           done
       - name: Scripts compile
         run: |
-          python -m py_compile skills/review-kit/scripts/*.py evals/score.py
+          python -m py_compile skills/review-kit/scripts/*.py evals/score.py evals/build_hard_fixtures.py evals/check_keys.py
           bash -n skills/review-kit/scripts/codex_review.sh
           bash -n evals/run_case.sh
           bash -n evals/run_adversarial_baseline.sh
+          bash -n evals/run_hard.sh
       - name: Regression tests and metadata validation
         run: |
           python -m pip install -r tests/requirements.txt
@@ -42,3 +43,14 @@ jobs:
           python "$GITHUB_WORKSPACE/skills/review-kit/scripts/detect_tests.py" "$P" > /dev/null
           cd /tmp/fx/cs-orders && git checkout -q feature/cancel-order
           python "$GITHUB_WORKSPACE/skills/review-kit/scripts/collect.py" --base main | grep -q "0012-order-cancellation"
+      - name: Harder eval set builds, answer keys line up, collector handles a too-large diff
+        run: |
+          python evals/build_hard_fixtures.py /tmp/hard
+          python evals/check_keys.py /tmp/hard
+          cd /tmp/hard/py-ledger && git checkout -q feature/multi-currency
+          python "$GITHUB_WORKSPACE/skills/review-kit/scripts/collect.py" --base main > /tmp/ctx-hard.txt
+          P=$(tail -1 /tmp/ctx-hard.txt | sed 's/^PKG=//')
+          grep -q "(too-large)" /tmp/ctx-hard.txt
+          grep -q "0003-multi-currency" /tmp/ctx-hard.txt
+          test -s "$P/diff-numbered.txt"
+          test -z "$(git status --porcelain --untracked-files=all)"

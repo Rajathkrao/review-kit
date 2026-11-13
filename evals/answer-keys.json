@@ -502,5 +502,787 @@
         "desc": "NOT a defect: the subscription is on the component's own FormControl and is collected with it; reporting it as a leak is noise"
       }
     ]
+  },
+  "py-ledger:feature/multi-currency": {
+    "base": "main",
+    "set": "hard",
+    "contract": "docs/adr/0003-multi-currency.md",
+    "note": "~1,240 changed lines across 20 files: the collector's too-large path. Bugs are buried among a currency table, an OFX importer and many tests.",
+    "must_find": [
+      {
+        "id": "L1",
+        "sev": "important",
+        "file": "ledger/fx.py",
+        "lines": [
+          54,
+          55
+        ],
+        "keys": [
+          "float",
+          "round(",
+          "half up",
+          "half-up",
+          "ROUND_HALF_UP",
+          "binary",
+          "Decimal"
+        ],
+        "desc": "convert() goes through float (to_major() and float(rate)) and Python round(): binary error and half-even rounding, e.g. 10.50 USD at 1.15 gives 12.07 EUR, not 12.08 (ADR #4)",
+        "anchor": "value = round(money.to_major()",
+        "ref": "Money-as-float rounding; Python docs: round() and floating point, decimal module"
+      },
+      {
+        "id": "L2",
+        "sev": "important",
+        "file": "ledger/importers/csv_import.py",
+        "lines": [
+          31,
+          31
+        ],
+        "keys": [
+          "lstrip",
+          "removeprefix",
+          "character set",
+          "set of characters",
+          "prefix"
+        ],
+        "desc": "lstrip('acct:') strips a set of characters, not the prefix: 'acct:cash' becomes 'sh', 'acct:checking' becomes 'hecking' (ADR #7)",
+        "anchor": "lstrip(\"acct:\")",
+        "ref": "str.lstrip vs removeprefix (PEP 616 rationale)"
+      },
+      {
+        "id": "L3",
+        "sev": "important",
+        "file": "ledger/transfers.py",
+        "lines": [
+          40,
+          40
+        ],
+        "keys": [
+          "falsy",
+          "__bool__",
+          "bool",
+          "Money(0",
+          "zero fee",
+          "fee of zero",
+          "explicit zero",
+          "fee of 0",
+          "0 fee",
+          "internal transfer"
+        ],
+        "desc": "Money defines __bool__, so an explicit Money(0) fee is falsy and replaced by the default fee: internal transfers are charged (ADR #5)",
+        "anchor": "fee = request.fee or default_fee(src_cur)"
+      },
+      {
+        "id": "L4",
+        "sev": "important",
+        "file": "ledger/reports.py",
+        "lines": [
+          39,
+          43
+        ],
+        "keys": [
+          "generator",
+          "exhaust",
+          "consumed",
+          "iterat",
+          "no rows",
+          "empty rows",
+          "rows are empty",
+          "rows empty",
+          "twice",
+          "read once",
+          "only be read once",
+          "uses it up",
+          "used up",
+          "no entries",
+          "no lines",
+          "only once"
+        ],
+        "desc": "entries is a generator: totals_by_currency() consumes it, so every statement has no rows (ADR #8)",
+        "anchor": "entries = (e for e in store.iter_entries"
+      },
+      {
+        "id": "L5",
+        "sev": "critical",
+        "file": "ledger/accounts.py",
+        "lines": [
+          34,
+          37
+        ],
+        "keys": [
+          "cache",
+          "lru",
+          "stale",
+          "invalidat"
+        ],
+        "desc": "balance() is lru_cached, so the overdraft check in transfer() sees a balance from before earlier postings in the same process: overdrafts are allowed (ADR #6)",
+        "anchor": "@lru_cache(maxsize=4096)"
+      }
+    ],
+    "nice_to_find": [
+      {
+        "id": "N1",
+        "sev": "minor",
+        "file": "tests/test_transfers.py",
+        "lines": [
+          1,
+          1
+        ],
+        "keys": [
+          "zero",
+          "internal",
+          "removed",
+          "dropped",
+          "no longer"
+        ],
+        "desc": "the main-branch test for a zero-fee internal transfer was dropped in the rewrite, which is how L3 slipped through"
+      }
+    ],
+    "bait": []
+  },
+  "py-ledger:feature/statement-export": {
+    "base": "main",
+    "set": "hard",
+    "clean": true,
+    "must_find": [],
+    "nice_to_find": [],
+    "note": "Correct change. Negative amounts are intentionally not formula-escaped (they are numbers); only the memo is free text.",
+    "bait": [
+      {
+        "id": "B1",
+        "sev": "none",
+        "file": "ledger/export.py",
+        "lines": [
+          14,
+          14
+        ],
+        "keys": [
+          "negative amount",
+          "amounts are not",
+          "amount column",
+          "-5.00"
+        ],
+        "desc": "negative amounts start with '-' but are numbers, not formula text"
+      }
+    ]
+  },
+  "py-uploads:feature/bundle-upload": {
+    "base": "main",
+    "set": "hard",
+    "contract": "docs/bundles.md",
+    "must_find": [
+      {
+        "id": "U1",
+        "sev": "critical",
+        "file": "app/bundles.py",
+        "lines": [
+          41,
+          41
+        ],
+        "keys": [
+          "symlink",
+          "symbolic",
+          "hard link",
+          "hardlink",
+          "issym",
+          "islnk",
+          "link member",
+          "filter="
+        ],
+        "desc": "_check_members never rejects symlinks/hard links (spec #3) and extractall has no filter on Python 3.11 (Dockerfile): a symlink member to /etc (or another project) is extracted and then served by download()",
+        "anchor": "tar.extractall(dest, members=members)",
+        "ref": "CVE-2007-4559; PEP 706 (tarfile extraction filters)"
+      },
+      {
+        "id": "U2",
+        "sev": "critical",
+        "file": "app/routes.py",
+        "lines": [
+          56,
+          56
+        ],
+        "keys": [
+          "startswith",
+          "normpath",
+          "realpath",
+          "resolve",
+          "traversal",
+          "commonpath",
+          "../",
+          "sibling"
+        ],
+        "desc": "download() checks the joined path with startswith before normalising: '../acme-web2/secret' and '../../etc/...' pass; 'acme' also prefixes 'acme-web2' (spec #4)",
+        "anchor": "if not full.startswith(root):",
+        "ref": "CWE-22 path traversal via unnormalised prefix check"
+      },
+      {
+        "id": "U3",
+        "sev": "critical",
+        "file": "app/validators.py",
+        "lines": [
+          15,
+          15
+        ],
+        "keys": [
+          "fullmatch",
+          "anchor",
+          "re.match",
+          "only the start",
+          "prefix",
+          "\\Z"
+        ],
+        "desc": "check_slug switched from fullmatch to match: 'acme-web/../../outside' is accepted from the form and bundles extract outside STORAGE_ROOT",
+        "anchor": "SLUG_RE.match(slug)"
+      },
+      {
+        "id": "U4",
+        "sev": "important",
+        "file": "app/bundles.py",
+        "lines": [
+          18,
+          28
+        ],
+        "keys": [
+          "200",
+          "extracted size",
+          "uncompressed",
+          "bomb",
+          "MAX_BUNDLE_EXTRACTED_BYTES",
+          "decompress",
+          "total size",
+          "m.size"
+        ],
+        "desc": "extracted size is never checked (MAX_BUNDLE_EXTRACTED_BYTES unused): a 50 MB gzip can expand to many GB (spec #2)",
+        "anchor": "def _check_members"
+      }
+    ],
+    "nice_to_find": [
+      {
+        "id": "N1",
+        "sev": "minor",
+        "file": "app/routes.py",
+        "lines": [
+          32,
+          32
+        ],
+        "keys": [
+          "None",
+          "content_length",
+          "chunked"
+        ],
+        "desc": "content_length is None for chunked uploads: TypeError, 500"
+      },
+      {
+        "id": "N2",
+        "sev": "minor",
+        "file": "app/bundles.py",
+        "lines": [
+          41,
+          41
+        ],
+        "keys": [
+          "partial",
+          "half",
+          "atomic",
+          "temporary",
+          "scratch"
+        ],
+        "desc": "extraction straight into the project can stop half way (disk full, bad member data), contrary to spec #3"
+      }
+    ],
+    "bait": [
+      {
+        "id": "B1",
+        "sev": "none",
+        "file": "app/thumbnails.py",
+        "lines": [
+          5,
+          6
+        ],
+        "keys": [
+          "MAX_IMAGE_PIXELS",
+          "decompression"
+        ],
+        "desc": "pre-existing and untouched by this branch; should not be reported as a finding of this change",
+        "anchor": "Image.MAX_IMAGE_PIXELS = None"
+      }
+    ]
+  },
+  "py-uploads:feature/safe-content-type": {
+    "base": "main",
+    "set": "hard",
+    "clean": true,
+    "must_find": [],
+    "nice_to_find": [],
+    "bait": [],
+    "note": "Correct hardening: explicit mimetype, nosniff, sandbox CSP, attachment for active types."
+  },
+  "py-jobs:feature/concurrent-dispatch": {
+    "base": "main",
+    "set": "hard",
+    "contract": "docs/dispatch.md",
+    "note": "Several bugs look 'rare' or 'theoretical' and are good at tempting a verifier to drop them; each is confirmed by running the code.",
+    "must_find": [
+      {
+        "id": "J1",
+        "sev": "critical",
+        "file": "jobs/dispatcher.py",
+        "lines": [
+          53,
+          53
+        ],
+        "keys": [
+          "_inflight",
+          "inflight",
+          "reference",
+          "garbage",
+          "drain",
+          "never added",
+          "weak"
+        ],
+        "desc": "tasks are never added to _inflight, so _drain() returns at once and run() exits with jobs still claimed (spec #4); the event loop only keeps weak references to tasks",
+        "anchor": "asyncio.create_task(self._run(job))",
+        "ref": "Python docs, asyncio.create_task: 'Save a reference to the result of this function'"
+      },
+      {
+        "id": "J2",
+        "sev": "important",
+        "file": "jobs/handlers/report.py",
+        "lines": [
+          19,
+          19
+        ],
+        "keys": [
+          "requests",
+          "blocks",
+          "blocking",
+          "event loop",
+          "synchronous"
+        ],
+        "desc": "report.export calls requests.get (sync, up to 30 s per page) inside an async handler: every other job on the loop stalls (CLAUDE.md)",
+        "anchor": "resp = requests.get(ANALYTICS_URL"
+      },
+      {
+        "id": "J3",
+        "sev": "important",
+        "file": "jobs/handlers/webhook.py",
+        "lines": [
+          32,
+          32
+        ],
+        "keys": [
+          "CancelledError",
+          "cancellation",
+          "cancel",
+          "bare except",
+          "BaseException"
+        ],
+        "desc": "bare except swallows CancelledError: the per-job timeout and shutdown cancellation are ignored while the webhook retry loop keeps going (spec #3, #4)",
+        "anchor": "except:  # noqa: E722"
+      },
+      {
+        "id": "J4",
+        "sev": "important",
+        "file": "jobs/registry.py",
+        "lines": [
+          34,
+          34
+        ],
+        "keys": [
+          "late",
+          "closure",
+          "binding",
+          "last value",
+          "report.export",
+          "loop variable"
+        ],
+        "desc": "late-binding closure: every legacy kind (mail, hook, export) runs report.export (spec #6)",
+        "anchor": "HANDLERS[legacy] = lambda job: HANDLERS[current](job)"
+      },
+      {
+        "id": "J5",
+        "sev": "critical",
+        "file": "jobs/dispatcher.py",
+        "lines": [
+          42,
+          42
+        ],
+        "keys": [
+          "utcnow",
+          "naive",
+          "aware",
+          "offset"
+        ],
+        "desc": "claim() compares aware run_at (retries use clock.utcnow) with naive datetime.utcnow(): TypeError after the first retry, the worker loop dies (CLAUDE.md, spec #2)",
+        "anchor": "jobs = await self.queue.claim(self.batch_size, datetime.utcnow())"
+      }
+    ],
+    "nice_to_find": [
+      {
+        "id": "N1",
+        "sev": "minor",
+        "file": "tests/test_dispatcher.py",
+        "lines": [
+          30,
+          30
+        ],
+        "keys": [
+          "naive",
+          "utcnow"
+        ],
+        "desc": "the scheduling test uses a naive datetime, which hides J5"
+      }
+    ],
+    "bait": [
+      {
+        "id": "B1",
+        "sev": "none",
+        "file": "jobs/dispatcher.py",
+        "lines": [
+          78,
+          78
+        ],
+        "keys": [
+          "self.processed",
+          "processed counter",
+          "processed +="
+        ],
+        "desc": "not a race: no await between read and write on one event loop"
+      }
+    ]
+  },
+  "py-jobs:fix/structured-logging": {
+    "base": "main",
+    "set": "hard",
+    "clean": true,
+    "must_find": [],
+    "nice_to_find": [],
+    "bait": [],
+    "note": "Correct: extra= keys avoid LogRecord attribute names (checked by a test)."
+  },
+  "py-shop:feature/coupon-redemption": {
+    "base": "main",
+    "set": "hard",
+    "contract": "docs/coupons.md",
+    "must_find": [
+      {
+        "id": "D1",
+        "sev": "critical",
+        "file": "orders/coupons.py",
+        "lines": [
+          44,
+          44
+        ],
+        "keys": [
+          "race",
+          "concurren",
+          "select_for_update",
+          "lock",
+          "simultaneous",
+          "at the same time",
+          "TOCTOU",
+          "check-then"
+        ],
+        "desc": "max_uses is checked with count() outside any lock, then the redemption is inserted: concurrent checkouts exceed the cap (spec #4); READ COMMITTED Postgres",
+        "anchor": "coupon.redemptions.count() >= coupon.max_uses",
+        "ref": "Django docs: avoiding race conditions with F() / select_for_update"
+      },
+      {
+        "id": "D2",
+        "sev": "important",
+        "file": "orders/coupons.py",
+        "lines": [
+          42,
+          42
+        ],
+        "keys": [
+          "localdate",
+          "UTC",
+          "Berlin",
+          "time zone",
+          "midnight",
+          "store time",
+          "local date"
+        ],
+        "desc": "timezone.now().date() is the UTC date: in Berlin a coupon stays valid for 1-2 hours after its last day (spec #2)",
+        "anchor": "timezone.now().date()"
+      },
+      {
+        "id": "D3",
+        "sev": "important",
+        "file": "orders/coupons.py",
+        "lines": [
+          47,
+          47
+        ],
+        "keys": [
+          "before the discount",
+          "pre-discount",
+          "after the discount",
+          "after discount",
+          "discounted subtotal",
+          "post-discount"
+        ],
+        "desc": "minimum is compared with the discounted subtotal; spec #3 says before the discount, so eligible carts are refused",
+        "anchor": "if order.subtotal - discount < coupon.min_subtotal"
+      },
+      {
+        "id": "D4",
+        "sev": "critical",
+        "file": "orders/migrations/0002_coupon_limits.py",
+        "lines": [
+          16,
+          16
+        ],
+        "keys": [
+          "default=0",
+          "existing coupons",
+          "unlimited",
+          "0 uses",
+          "max_uses=0",
+          "backfill"
+        ],
+        "desc": "AddField with default=0 backfills every existing coupon with max_uses=0 before the AlterField to null: all current coupons become exhausted (spec #4)",
+        "anchor": "default=0"
+      },
+      {
+        "id": "D5",
+        "sev": "important",
+        "file": "orders/templates/orders/cart.html",
+        "lines": [
+          5,
+          5
+        ],
+        "keys": [
+          "|safe",
+          "xss",
+          "XSS",
+          "escap",
+          "script"
+        ],
+        "desc": "partner-written coupon description rendered with |safe on the cart page: stored XSS (spec #7)",
+        "anchor": "|safe"
+      }
+    ],
+    "nice_to_find": [],
+    "bait": []
+  },
+  "py-shop:feature/coupon-admin": {
+    "base": "main",
+    "set": "hard",
+    "clean": true,
+    "must_find": [],
+    "nice_to_find": [],
+    "bait": [],
+    "note": "Correct Django admin configuration."
+  },
+  "py-ingest:feature/ingest-v2": {
+    "base": "main",
+    "set": "hard",
+    "contract": "docs/ingest-v2.md",
+    "note": "Nine bugs that each need a precise piece of Python, SQL or Flask semantics; one (H12) is only visible by reading pipeline.py, which the branch does not touch. Nine is above quick's 7-finding cap on purpose.",
+    "must_find": [
+      {
+        "id": "H1",
+        "sev": "critical",
+        "file": "ingest/sharding.py",
+        "lines": [
+          7,
+          7
+        ],
+        "keys": [
+          "hash(",
+          "PYTHONHASHSEED",
+          "randomi",
+          "salted",
+          "stable",
+          "per process",
+          "hashlib",
+          "crc32"
+        ],
+        "desc": "str hash() is randomised per process (PYTHONHASHSEED): each worker and every restart maps a tenant to a different partition (spec #5)",
+        "anchor": "return hash(tenant) % partitions",
+        "ref": "Python docs, object.__hash__ / PYTHONHASHSEED"
+      },
+      {
+        "id": "H2",
+        "sev": "critical",
+        "file": "ingest/redact.py",
+        "lines": [
+          9,
+          9
+        ],
+        "keys": [
+          "count",
+          "positional",
+          "flags=",
+          "IGNORECASE",
+          "case",
+          "only the first",
+          "first two"
+        ],
+        "desc": "re.IGNORECASE is passed as the positional count (=2): only the first two emails are redacted and the match is case-sensitive, so Bob@Example.COM is stored (spec #4)",
+        "anchor": "re.sub(EMAIL, \"[email]\", text, re.IGNORECASE)",
+        "ref": "Python 3.13 deprecates positional count/flags in re.sub for this reason"
+      },
+      {
+        "id": "H3",
+        "sev": "critical",
+        "file": "ingest/store.py",
+        "lines": [
+          56,
+          56
+        ],
+        "keys": [
+          "NOT IN",
+          "NULL",
+          "null",
+          "parent_id IS NOT NULL",
+          "NOT EXISTS",
+          "empty"
+        ],
+        "desc": "NOT IN over a subquery containing NULL (top-level tenants) is never true: billable_tenants() is always empty, usage bills nobody (spec #8)",
+        "anchor": "WHERE id NOT IN (SELECT parent_id FROM tenants)",
+        "ref": "SQL three-valued logic: x NOT IN (..., NULL)"
+      },
+      {
+        "id": "H5",
+        "sev": "critical",
+        "file": "ingest/config.py",
+        "lines": [
+          19,
+          19
+        ],
+        "keys": [
+          "bool(",
+          "\"0\"",
+          "'0'",
+          "truthy",
+          "non-empty string",
+          "dry run",
+          "dry_run"
+        ],
+        "desc": "bool('0') is True: production sets INGEST_DRY_RUN=0, so every worker silently runs in dry-run mode and writes nothing (spec #6, deploy/ingest.yaml)",
+        "anchor": "dry_run=bool(env.get(\"INGEST_DRY_RUN\", False))"
+      },
+      {
+        "id": "H6",
+        "sev": "important",
+        "file": "ingest/dedupe.py",
+        "lines": [
+          14,
+          14
+        ],
+        "keys": [
+          "remove",
+          "while iterating",
+          "skips",
+          "skip",
+          "mutat",
+          "in place",
+          "modif"
+        ],
+        "desc": "removing from the list being iterated skips the next element: an event resent twice survives as a duplicate (spec #3: 'sometimes several times')",
+        "anchor": "events.remove(e)"
+      },
+      {
+        "id": "H8",
+        "sev": "important",
+        "file": "ingest/api.py",
+        "lines": [
+          14,
+          14
+        ],
+        "keys": [
+          "wraps",
+          "__name__",
+          "endpoint",
+          "AssertionError",
+          "overwriting"
+        ],
+        "desc": "require_token's wrapper lacks functools.wraps: both views register as endpoint 'wrapper' and create_app() raises AssertionError, so the admin API never starts (spec #9)",
+        "anchor": "def wrapper(*args, **kwargs):"
+      },
+      {
+        "id": "H12",
+        "sev": "critical",
+        "file": "ingest/timeparse.py",
+        "lines": [
+          9,
+          9
+        ],
+        "keys": [
+          "None",
+          "sort",
+          "TypeError",
+          "pipeline",
+          "dead-letter",
+          "dead letter",
+          "NoneType"
+        ],
+        "desc": "parse_ts now returns None for blank ts instead of raising; pipeline.process (untouched) only dead-letters on ValueError, so Event(ts=None) reaches the sort and the whole file fails with TypeError (spec #2)",
+        "anchor": "return None"
+      },
+      {
+        "id": "H13",
+        "sev": "critical",
+        "file": "ingest/reader.py",
+        "lines": [
+          24,
+          24
+        ],
+        "keys": [
+          "closed",
+          "I/O",
+          "with open",
+          "yield from",
+          "generator",
+          "lazy",
+          "context manager"
+        ],
+        "desc": "read_ndjson returns a lazy generator from inside `with open`: the file is closed before the first row is read, so every run_file raises 'I/O operation on closed file' (spec #1)",
+        "anchor": "return rows_from_lines(fh)"
+      },
+      {
+        "id": "H16",
+        "sev": "important",
+        "file": "ingest/export.py",
+        "lines": [
+          7,
+          7
+        ],
+        "keys": [
+          "//",
+          "floor",
+          "ceil",
+          "last page",
+          "partial page",
+          "remainder",
+          "off-by-one",
+          "1200"
+        ],
+        "desc": "floor division drops the last partial page: 1,200 events export as 1,000 (spec #7)",
+        "anchor": "pages = total // page_size"
+      }
+    ],
+    "nice_to_find": [
+      {
+        "id": "N1",
+        "sev": "minor",
+        "file": "tests/test_v2.py",
+        "lines": [
+          44,
+          44
+        ],
+        "keys": [
+          "same process",
+          "one process",
+          "subprocess",
+          "across processes"
+        ],
+        "desc": "the stability test runs in one process, so it cannot catch H1"
+      }
+    ],
+    "bait": []
   }
 }
