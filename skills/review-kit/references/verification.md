@@ -56,6 +56,10 @@ main path, and silent failures are never dropped for being rare.
 - Missing docs or coverage, unless the contract, project rules or mode asks for them.
 - Rules explicitly silenced in the code (a lint-ignore with a reason).
 - A `shortcut:` comment that names its limit, unless the expected load already crosses it.
+- Framework defaults the change merely inherits (Django admin's delete action and per-field
+  editability, default permissions, a library's default timeout already used elsewhere) unless the
+  contract or project rules forbid them, or the change makes them newly reachable by untrusted
+  users. Report those at most as Minor.
 
 ## Severity (impact, not effort)
 
@@ -66,6 +70,10 @@ main path, and silent failures are never dropped for being rare.
 - **Minor**: polish, simplification, a narrow edge with small impact. Also log wording and
   observability-only changes, unless something in the repo (a test, parser, alert rule or the
   contract) depends on the old text.
+
+A requirement you inferred yourself (not written in a doc, PR, issue, comment or rule file) never
+raises severity on its own: judge the finding by its real impact. A candidate you would score below
+70 confidence is `plausible`, whatever its severity.
 
 A finding whose harm depends on something you cannot see (deployment config, a formatter, a
 caller outside the repo) is `plausible` with that fact as its `check`, not `confirmed`. A

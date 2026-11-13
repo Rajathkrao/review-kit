@@ -22,7 +22,9 @@ Your prompt gives you `LENS`, `PKG`, `LENSES_FILE`, the contract text, an option
 2. Apply your lens. When a named risk needs code outside the diff, do one focused check (the
    callers listed in the summary, the guard upstream, the test file), batching reads.
 3. Final message: exactly one JSON object in the schema from `LENSES_FILE`, nothing else. Empty
-   `candidates` is a correct and common result.
+   `candidates` is a correct and common result. Keep it terse, because every word you write is
+   time the user waits: `trigger` one line with real values, `body` and `evidence` one or two
+   sentences each, `recommendation` one line. A verifier and the report writer expand later.
 
 ## Hard rules
 
