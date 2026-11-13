@@ -11,20 +11,21 @@ skill is mainly used for, and it is built to make three things show up:
 - **A diff over the collector's 1,000-line limit.** `py-ledger:feature/multi-currency` changes about
   1,240 lines in 20 files. Its five bugs sit among a currency table, an OFX importer and a lot of
   tests.
-- **False alarms.** Four of the eight branches are correct changes. Some include code that looks
+- **False alarms.** Four of the nine branches are correct changes. Some include code that looks
   wrong but is not, such as negative amounts left unescaped in a CSV export (they are numbers)
   and a counter changed without a lock in a coroutine with no `await` in between.
 
 | Case | Kind | Size | Planted | Contract |
 |---|---|---|---|---|
 | `py-ledger:feature/multi-currency` | money, refactor | 20 files, +1098/−138 | 5 (L1–L5) | `docs/adr/0003-multi-currency.md` |
-| `py-ledger:feature/statement-export` | clean | 3 files, +96 | 0 | none |
+| `py-ledger:feature/statement-export` | clean | 3 files, +107 | 0 | none |
 | `py-uploads:feature/bundle-upload` | Flask, file security | 6 files, +157/−6 | 4 (U1–U4) + 2 nice | `docs/bundles.md` |
-| `py-uploads:feature/safe-content-type` | clean | 2 files, +50/−1 | 0 | none |
+| `py-uploads:feature/safe-content-type` | clean | 2 files, +56/−1 | 0 | none |
 | `py-jobs:feature/concurrent-dispatch` | asyncio | 11 files, +270/−37 | 5 (J1–J5) + 1 nice | `docs/dispatch.md` |
 | `py-jobs:fix/structured-logging` | clean | 2 files, +64/−2 | 0 | none |
 | `py-shop:feature/coupon-redemption` | Django | 8 files, +196/−2 | 5 (D1–D5) | `docs/coupons.md` |
-| `py-shop:feature/coupon-admin` | clean | 2 files, +85 | 0 | none |
+| `py-shop:feature/coupon-admin` | clean | 2 files, +112 | 0 | none |
+| `py-ingest:feature/ingest-v2` | NDJSON ingest, SQL, Flask | 13 files, +292/−8 | 9 (H1–H16) + 1 nice | `docs/ingest-v2.md` |
 
 The answer keys are in `../answer-keys.json` (cases with `"set": "hard"`). Each item has an
 `anchor`, which is a piece of text that must appear on the item's lines. `../check_keys.py`
@@ -55,6 +56,15 @@ small apps so the answer is unambiguous. They are not copies of specific upstrea
 | D2 | `timezone.now().date()` (UTC) instead of `timezone.localdate()` | Django time zone docs |
 | D4 | `AddField(default=0)` backfills existing rows before `AlterField(null=True)` | Django migrations docs |
 | D5 | `|safe` on partner-supplied text | Django docs, automatic HTML escaping |
+| H1 | `hash(str) % n` for partitioning: randomised per process | Python docs, `PYTHONHASHSEED` |
+| H2 | `re.sub(p, r, s, re.IGNORECASE)`: the flag lands in `count` | Python 3.13 deprecation of positional `count` |
+| H3 | `NOT IN (subquery)` that contains NULL is never true | SQL three-valued logic |
+| H5 | `bool(os.environ.get(...))`: `"0"` is truthy | common config bug |
+| H6 | `list.remove` while iterating the same list skips items | Python tutorial, "modifying a collection while iterating" |
+| H8 | decorator without `functools.wraps`: Flask endpoint name clash | Flask docs, view decorators |
+| H12 | callee changed from raising to returning None; an untouched caller relies on the exception | caller outside the diff |
+| H13 | lazy generator returned from inside `with open(...)` | common |
+| H16 | page count with `//` drops the last partial page | common |
 
 ## Layout and building
 
@@ -91,4 +101,5 @@ running the code. Some examples: `convert(10.50 USD @1.15)` gives 12.07, not 12.
 slug `acme-web/../../outside` writes outside the storage root. `claim()` raises "can't compare
 offset-naive and offset-aware datetimes" after the first retry. `run()` returns with jobs still
 claimed. Legacy kind `mail` runs `report.export`. Migrating an existing coupon leaves
-`max_uses = 0`.
+`max_uses = 0`. In py-ingest, six separate worker processes put one tenant in six different
+partitions, and `INGEST_DRY_RUN=0` turns dry run on.

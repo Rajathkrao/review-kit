@@ -1,0 +1,7 @@
+{
+  "main_message": "ingest 1.9: parse partner files, dead letters, event store",
+  "branches": [
+    {"name": "feature/ingest-v2", "dir": "v2",
+     "message": "Ingest v2: reader, dedupe, redaction, partitions, export, billing rollup, admin API\n\nSee docs/ingest-v2.md. Settings move to a dataclass; heartbeat rows with an empty ts no\nlonger raise in parse_ts."}
+  ]
+}

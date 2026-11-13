@@ -20,12 +20,14 @@ class CouponAdminTests(TestCase):
     def request(self):
         r = self.rf.get("/")
         r.user = self.admin_user
-        r._messages = type("M", (), {"add": lambda *a, **k: None})()
+        sent = self.sent = []
+        r._messages = type("M", (), {"add": lambda self, level, msg, extra_tags="": sent.append(msg)})()
         return r
 
     def test_deactivate_counts_only_active(self):
         self.ma.deactivate(self.request(), Coupon.objects.all())
         self.assertFalse(Coupon.objects.get(code="A").active)
+        self.assertEqual(self.sent, ["Deactivated 1 coupon(s)."])
 
     def test_code_readonly_once_used(self):
         self.assertEqual(self.ma.get_readonly_fields(self.request(), self.c1), ())
@@ -36,6 +38,18 @@ class CouponAdminTests(TestCase):
         Order.objects.create(user=self.admin_user, subtotal=Decimal("1"), coupon=self.c1)
         obj = self.ma.get_queryset(self.request()).get(pk=self.c1.pk)
         self.assertEqual(self.ma.orders_count(obj), 1)
+
+    def test_used_coupon_cannot_be_deleted(self):
+        self.assertTrue(self.ma.has_delete_permission(self.request(), self.c1))
+        Order.objects.create(user=self.admin_user, subtotal=Decimal("1"), coupon=self.c1)
+        self.assertFalse(self.ma.has_delete_permission(self.request(), self.c1))
+        self.assertNotIn("delete_selected", self.ma.get_actions(self.request()))
+
+    def test_deactivate_when_sorted_by_orders(self):
+        self.client.force_login(self.admin_user)
+        r = self.client.post("/admin/orders/coupon/?o=6", {"action": "deactivate", "_selected_action": [self.c1.pk]})
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(Coupon.objects.get(pk=self.c1.pk).active)
 
     def test_changelist_loads(self):
         self.client.force_login(self.admin_user)

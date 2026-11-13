@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingest-worker
+spec:
+  replicas: 6
+  template:
+    spec:
+      containers:
+        - name: worker
+          image: registry.internal/ingest:1.9.0
+          env:
+            - name: INGEST_DRY_RUN
+              value: "0"
+            - name: INGEST_PARTITIONS
+              value: "16"
+            - name: INGEST_API_TOKEN
+              valueFrom: {secretKeyRef: {name: ingest, key: api-token}}

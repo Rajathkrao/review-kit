@@ -1,5 +1,6 @@
 """ledger command line."""
 import argparse
+import os
 import sys
 
 from . import reports, transfers
@@ -27,8 +28,18 @@ def main(argv=None) -> int:
     elif args.cmd == "statement" and args.csv:
         if args.grep:
             p.error("--grep cannot be combined with --csv")
-        with open(args.csv, "w", newline="") as fh:
-            n = export_statement(store, args.account, fh)
+        if not store.account_exists(args.account):
+            p.error(f"unknown account {args.account!r}")
+        # Write next to the target and swap it in, so a failed export never leaves a
+        # truncated statement behind (or empties last month's file).
+        tmp = f"{args.csv}.tmp"
+        try:
+            with open(tmp, "w", newline="", encoding="utf-8") as fh:
+                n = export_statement(store, args.account, fh)
+            os.replace(tmp, args.csv)
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
         print(f"wrote {n} rows to {args.csv}")
     elif args.cmd == "statement":
         print(reports.render(reports.statement(store, args.account, args.grep)))

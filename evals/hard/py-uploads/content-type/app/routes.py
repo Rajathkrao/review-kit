@@ -30,21 +30,24 @@ def index(slug):
     return jsonify(files=list_files(slug))
 
 
-# Types a browser would execute or render as a page on our origin. Serve them as downloads.
-ACTIVE_TYPES = {"text/html", "application/xhtml+xml", "image/svg+xml", "text/xml",
-                "application/xml", "application/javascript", "text/javascript"}
+# Only these are shown inline; anything else (HTML, SVG, XML, scripts, unknown types) is a
+# download, so nothing an uploader controls can render as a page on our origin.
+INLINE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "text/plain"}
 
 
 def content_type_for(name: str) -> str:
-    guessed, _ = mimetypes.guess_type(name, strict=False)
-    return guessed or "application/octet-stream"
+    guessed, encoding = mimetypes.guess_type(name, strict=False)
+    if encoding or not guessed:
+        # "notes.txt.gz" guesses text/plain + gzip; serving that as text/plain shows raw bytes.
+        return "application/octet-stream"
+    return guessed
 
 
 @bp.get("/projects/<slug>/files/<name>")
 def download(slug, name):
     mimetype = content_type_for(name)
     resp = send_from_directory(project_dir(slug), name, mimetype=mimetype,
-                               as_attachment=mimetype in ACTIVE_TYPES)
+                               as_attachment=mimetype not in INLINE_TYPES)
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
     return resp

@@ -589,7 +589,14 @@
           "empty rows",
           "rows are empty",
           "rows empty",
-          "twice"
+          "twice",
+          "read once",
+          "only be read once",
+          "uses it up",
+          "used up",
+          "no entries",
+          "no lines",
+          "only once"
         ],
         "desc": "entries is a generator: totals_by_currency() consumes it, so every statement has no rows (ADR #8)",
         "anchor": "entries = (e for e in store.iter_entries"
@@ -1068,5 +1075,214 @@
     "nice_to_find": [],
     "bait": [],
     "note": "Correct Django admin configuration."
+  },
+  "py-ingest:feature/ingest-v2": {
+    "base": "main",
+    "set": "hard",
+    "contract": "docs/ingest-v2.md",
+    "note": "Nine bugs that each need a precise piece of Python, SQL or Flask semantics; one (H12) is only visible by reading pipeline.py, which the branch does not touch. Nine is above quick's 7-finding cap on purpose.",
+    "must_find": [
+      {
+        "id": "H1",
+        "sev": "critical",
+        "file": "ingest/sharding.py",
+        "lines": [
+          7,
+          7
+        ],
+        "keys": [
+          "hash(",
+          "PYTHONHASHSEED",
+          "randomi",
+          "salted",
+          "stable",
+          "per process",
+          "hashlib",
+          "crc32"
+        ],
+        "desc": "str hash() is randomised per process (PYTHONHASHSEED): each worker and every restart maps a tenant to a different partition (spec #5)",
+        "anchor": "return hash(tenant) % partitions",
+        "ref": "Python docs, object.__hash__ / PYTHONHASHSEED"
+      },
+      {
+        "id": "H2",
+        "sev": "critical",
+        "file": "ingest/redact.py",
+        "lines": [
+          9,
+          9
+        ],
+        "keys": [
+          "count",
+          "positional",
+          "flags=",
+          "IGNORECASE",
+          "case",
+          "only the first",
+          "first two"
+        ],
+        "desc": "re.IGNORECASE is passed as the positional count (=2): only the first two emails are redacted and the match is case-sensitive, so Bob@Example.COM is stored (spec #4)",
+        "anchor": "re.sub(EMAIL, \"[email]\", text, re.IGNORECASE)",
+        "ref": "Python 3.13 deprecates positional count/flags in re.sub for this reason"
+      },
+      {
+        "id": "H3",
+        "sev": "critical",
+        "file": "ingest/store.py",
+        "lines": [
+          56,
+          56
+        ],
+        "keys": [
+          "NOT IN",
+          "NULL",
+          "null",
+          "parent_id IS NOT NULL",
+          "NOT EXISTS",
+          "empty"
+        ],
+        "desc": "NOT IN over a subquery containing NULL (top-level tenants) is never true: billable_tenants() is always empty, usage bills nobody (spec #8)",
+        "anchor": "WHERE id NOT IN (SELECT parent_id FROM tenants)",
+        "ref": "SQL three-valued logic: x NOT IN (..., NULL)"
+      },
+      {
+        "id": "H5",
+        "sev": "critical",
+        "file": "ingest/config.py",
+        "lines": [
+          19,
+          19
+        ],
+        "keys": [
+          "bool(",
+          "\"0\"",
+          "'0'",
+          "truthy",
+          "non-empty string",
+          "dry run",
+          "dry_run"
+        ],
+        "desc": "bool('0') is True: production sets INGEST_DRY_RUN=0, so every worker silently runs in dry-run mode and writes nothing (spec #6, deploy/ingest.yaml)",
+        "anchor": "dry_run=bool(env.get(\"INGEST_DRY_RUN\", False))"
+      },
+      {
+        "id": "H6",
+        "sev": "important",
+        "file": "ingest/dedupe.py",
+        "lines": [
+          14,
+          14
+        ],
+        "keys": [
+          "remove",
+          "while iterating",
+          "skips",
+          "skip",
+          "mutat",
+          "in place",
+          "modif"
+        ],
+        "desc": "removing from the list being iterated skips the next element: an event resent twice survives as a duplicate (spec #3: 'sometimes several times')",
+        "anchor": "events.remove(e)"
+      },
+      {
+        "id": "H8",
+        "sev": "important",
+        "file": "ingest/api.py",
+        "lines": [
+          14,
+          14
+        ],
+        "keys": [
+          "wraps",
+          "__name__",
+          "endpoint",
+          "AssertionError",
+          "overwriting"
+        ],
+        "desc": "require_token's wrapper lacks functools.wraps: both views register as endpoint 'wrapper' and create_app() raises AssertionError, so the admin API never starts (spec #9)",
+        "anchor": "def wrapper(*args, **kwargs):"
+      },
+      {
+        "id": "H12",
+        "sev": "critical",
+        "file": "ingest/timeparse.py",
+        "lines": [
+          9,
+          9
+        ],
+        "keys": [
+          "None",
+          "sort",
+          "TypeError",
+          "pipeline",
+          "dead-letter",
+          "dead letter",
+          "NoneType"
+        ],
+        "desc": "parse_ts now returns None for blank ts instead of raising; pipeline.process (untouched) only dead-letters on ValueError, so Event(ts=None) reaches the sort and the whole file fails with TypeError (spec #2)",
+        "anchor": "return None"
+      },
+      {
+        "id": "H13",
+        "sev": "critical",
+        "file": "ingest/reader.py",
+        "lines": [
+          24,
+          24
+        ],
+        "keys": [
+          "closed",
+          "I/O",
+          "with open",
+          "yield from",
+          "generator",
+          "lazy",
+          "context manager"
+        ],
+        "desc": "read_ndjson returns a lazy generator from inside `with open`: the file is closed before the first row is read, so every run_file raises 'I/O operation on closed file' (spec #1)",
+        "anchor": "return rows_from_lines(fh)"
+      },
+      {
+        "id": "H16",
+        "sev": "important",
+        "file": "ingest/export.py",
+        "lines": [
+          7,
+          7
+        ],
+        "keys": [
+          "//",
+          "floor",
+          "ceil",
+          "last page",
+          "partial page",
+          "remainder",
+          "off-by-one",
+          "1200"
+        ],
+        "desc": "floor division drops the last partial page: 1,200 events export as 1,000 (spec #7)",
+        "anchor": "pages = total // page_size"
+      }
+    ],
+    "nice_to_find": [
+      {
+        "id": "N1",
+        "sev": "minor",
+        "file": "tests/test_v2.py",
+        "lines": [
+          44,
+          44
+        ],
+        "keys": [
+          "same process",
+          "one process",
+          "subprocess",
+          "across processes"
+        ],
+        "desc": "the stability test runs in one process, so it cannot catch H1"
+      }
+    ],
+    "bait": []
   }
 }

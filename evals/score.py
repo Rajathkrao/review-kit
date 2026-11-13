@@ -36,8 +36,9 @@ SEV_RE = re.compile(r"\b(Critical|Important|Minor|Nit|FYI|High|Medium|Low)\b", r
 
 
 def sections(report: str):
-    """Yield (kind, text) where kind is 'findings', 'dismissed' or 'other'."""
-    kind, buf = "findings", []
+    """Yield (kind, text) where kind is 'findings', 'dismissed', 'other' or 'preamble' (text
+    before the first recognised heading: verdict, scope, commands)."""
+    kind, buf = "preamble", []
     for line in report.splitlines():
         stripped = line.strip()
         if HEAD_RE.match(stripped) and not SEV_RE.match(stripped.strip("*# ").split(":")[0]) \
@@ -53,8 +54,12 @@ def sections(report: str):
     yield kind, "\n".join(buf)
 
 
+NO_ISSUES = re.compile(r"\bno (?:\w+ ){0,4}issues (?:were )?found\b", re.I)
+
+
 def finding_blocks(text: str) -> list[str]:
-    return [b for b in BLOCK_SPLIT.split(text) if b and FILE_RE.search(b)]
+    return [b for b in BLOCK_SPLIT.split(text)
+            if b and FILE_RE.search(b) and not (NO_ISSUES.search(b) and not re.search(r"\*\*\d+\.", b))]
 
 
 def dismissed_blocks(text: str) -> list[str]:
@@ -73,7 +78,11 @@ def severity(block: str) -> str:
 
 def score(report: str, key: dict) -> dict:
     found, dismissed = [], []
-    for kind, text in sections(report):
+    parts = list(sections(report))
+    if not any(k == "findings" for k, _ in parts):
+        # No findings heading at all (a free-form report): treat the opening text as findings.
+        parts = [("findings" if k == "preamble" else k, t) for k, t in parts]
+    for kind, text in parts:
         if kind == "findings":
             found += finding_blocks(text)
         elif kind == "dismissed":

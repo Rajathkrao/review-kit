@@ -12,16 +12,19 @@ def upload(client, name, data=b"x"):
 @pytest.mark.parametrize("name,ctype,attachment", [
     ("logo.svg", "image/svg+xml", True),
     ("page.html", "text/html", True),
-    ("app.js", "text/javascript", True),
+    ("feed.rdf", None, True),
+    ("notes.txt.gz", "application/octet-stream", True),
+    ("doc.pdf", "application/pdf", True),
     ("photo.png", "image/png", False),
     ("notes.txt", "text/plain", False),
-    ("blob.unknownext", "application/octet-stream", False),
+    ("blob.unknownext", "application/octet-stream", True),
 ])
 def test_content_type(client, name, ctype, attachment):
     upload(client, name)
     r = client.get(f"/projects/acme-web/files/{name}")
     assert r.status_code == 200
-    assert r.mimetype == ctype
+    if ctype:
+        assert r.mimetype == ctype
     assert r.headers["X-Content-Type-Options"] == "nosniff"
     assert ("attachment" in r.headers.get("Content-Disposition", "")) is attachment
 
