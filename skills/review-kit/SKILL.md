@@ -131,7 +131,9 @@ Read `references/output-format.md` and write the report exactly in that format:
   mode or with `--all`; otherwise a one-line count). Every Critical and Important finding is shown in full, never cut
   by a cap; past 7 in quick or 12 otherwise, write the extra ones in 2–3 lines each. One
   structural problem outranks ten nits.
-- **Worth a look**: every `plausible` candidate, one or two lines each with what to check.
+- **Worth a look**: `plausible` candidates, one or two lines each with what to check. Show the 4
+  that matter most (money, data, security first); give the rest as a one-line count, or in full
+  with `--all`. Hardening ideas with no trigger (fsync, BOM, "add a test") are not candidates.
 - **Dismissed**: every `refuted` candidate in one line with the disproof (file:line), so the
   reader can overrule it.
 - Zero findings is a valid result: say what was checked. Never pad.

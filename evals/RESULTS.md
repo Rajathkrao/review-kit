@@ -270,3 +270,11 @@ the fixture's owner. Quick with the same rules: 28/28, 0 confirmed findings on c
 601 s, $3.55.
 
 `/rk:fix` on the dev payouts fixture: 7 findings fixed with a test each in 100 s for $0.56.
+
+After #24 fixed the statement-export fixture and split "worth a look" out in `score.py`, deep on
+the four clean branches (main at 06b080b) gave 1 confirmed finding (statement-export: a total
+that would be wrong "once multi-currency storage lands") and 9 worth-a-look items. Two rules
+followed: harm that needs code which doesn't exist yet is out of scope, and "Worth a look" shows
+at most 4 items and no trigger-less hardening ideas. Re-run on three cases: statement-export
+0 findings and 2 worth-a-look items (was 1 and 6), multi-currency 5/5, coupon-redemption 5/5.
+The other three clean cases and the full set were not re-run with these two rules.

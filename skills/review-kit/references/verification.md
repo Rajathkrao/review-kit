@@ -56,6 +56,9 @@ main path, and silent failures are never dropped for being rare.
 - Missing docs or coverage, unless the contract, project rules or mode asks for them.
 - Rules explicitly silenced in the code (a lint-ignore with a reason).
 - A `shortcut:` comment that names its limit, unless the expected load already crosses it.
+- Harm that needs code which doesn't exist yet ("once multi-currency lands, this total is wrong").
+  The trigger must work against the repository as it is. A docstring or comment that overclaims
+  is at most Minor.
 - Framework defaults the change merely inherits (Django admin's delete action and per-field
   editability, default permissions, a library's default timeout already used elsewhere) unless the
   contract or project rules forbid them, or the change makes them newly reachable by untrusted
