@@ -1,12 +1,13 @@
 """Diagrams are drawn by the renderer from boxes and arrows, escaped, and linked to findings."""
 import json
+import subprocess
 import sys
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'skills/review-kit/scripts'))
 import diagrams
-from test_html import Walkthrough as _Base
+from test_html import SCRIPTS, Walkthrough as _Base
 
 
 class DiagramUnits(unittest.TestCase):
@@ -93,6 +94,24 @@ class PageSections(_Base):
         self.assertIn('Kept with its finding', html)
         self.assertIn('href="#F1"', html)
         self.assertNotIn('F4', html)
+
+    def test_glance_table_fix_prompts_and_folding(self):
+        html = self.render(dict(title='Payments', problems={'F1': dict(
+            summary='Deep summary', scenario=['First call', 'Retry'],
+            fix=dict(explanation='Send an idempotency key.'), test=dict(code='assert calls == 1', explanation='Fails today.'))}))
+        for text in ('Problems at a glance', 'data-filter="critical"', 'Copy all fix prompts', 'Copy fix prompt',
+                     'Fix this code review finding.', 'Where: pay.py:1-4', 'How it breaks: 1) First call 2) Retry',
+                     '<details class="fold">', 'id="fold-all"'):
+            self.assertIn(text, html)
+
+    def test_copy_to_writes_a_copy_and_prints_a_file_link(self):
+        (self.pkg / 'explainer.json').write_text(json.dumps(dict(title='Payments')))
+        r = subprocess.run([sys.executable, str(SCRIPTS / 'render_html.py'), str(self.pkg), '--copy-to', str(self.root / 'out')],
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        copy = self.root / 'out' / 'pkg.html'
+        self.assertTrue(copy.is_file())
+        self.assertEqual(r.stdout.splitlines()[-2:], [str(copy), copy.resolve().as_uri()])
 
     def test_explain_mode_has_no_verdict(self):
         (self.pkg / 'findings.json').write_text(json.dumps(dict(

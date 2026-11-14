@@ -28,6 +28,8 @@ In Codex, read `references/codex.md` first. Invoke as `$review-kit <mode> [targe
 | `--base <ref>` | base for a branch review | upstream, else `origin/HEAD`, `main`, `master` |
 | `--focus "<text>"` | area to weight heavily | none |
 | `--html` / `--no-html` | write or skip the HTML walkthrough | on in deep, full, pr, arch, explain |
+| `--open` | open the HTML page in the browser when it is written | off (`"open": true` in config) |
+| `--html-out <dir>` | also copy the HTML page into this folder | scratch folder only (`"html_dir"` in config) |
 | `--second-model` | add an independent review by a different model | off |
 | `--post` | post the review to the PR (pr mode) | off |
 | `--run` | pre-approve running tests and repro scripts | off |
@@ -98,6 +100,8 @@ real defect here.
 `references/lenses.md`, the contract text, `--focus` if any, and the source root. Never pass your
 own opinion of the code. Each lens returns its candidates as JSON in its final message; nothing is
 written to disk. With `--second-model`, start it in the same message (`references/second-model.md`).
+In quick mode with the walkthrough on, launch the same writer with `run_in_background: true`
+right after the context step, review inline while it writes, and render when both are done.
 When the HTML walkthrough is on, also launch one `rk:walkthrough-writer` in that same message with
 `PKG`, `EXPLAINER_FILE` (path of `references/html-explainer.md`), the contract text
 and the source root: it writes `$PKG/explainer.json` while the lenses hunt.

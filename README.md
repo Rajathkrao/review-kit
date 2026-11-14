@@ -57,7 +57,7 @@ review uses the Codex CLI if installed and logged in, otherwise a different Clau
 **Target**: nothing (current branch vs its base, plus uncommitted work), `main...feature`, a commit,
 a PR number or URL, or a path.
 **Flags**: `--html` / `--no-html` · `--second-model` · `--run` (pre-approve tests and repro scripts) ·
-`--all` (show minor findings) · `--focus "auth changes"` · `--base develop` · pr mode: `--post`, `--quick` · refine: `--apply`.
+`--all` (show minor findings) · `--open` · `--html-out <dir>` · `--focus "auth changes"` · `--base develop` · pr mode: `--post`, `--quick` · refine: `--apply`.
 
 ## Why it is fast
 
@@ -119,7 +119,11 @@ execution and verification evidence, findings (file:line, trigger, impact, fix, 
 spec compliance, PR comment verdicts, dismissed candidates with their disproof, and what was not
 checked. Findings are numbered, so "fix 1 and 3" works.
 
-The HTML walkthrough (on by default in deep, full, pr, arch and explain) opens with **the big
+The HTML walkthrough (on by default in deep, full, pr, arch and explain) opens with **problems at
+a glance**: every finding in one table with its one-line fix, severity filters, and a "Copy all fix
+prompts" button whose text you can paste straight into Claude Code (each problem has its own
+"Copy fix prompt" too). Problems fold and unfold, `j` / `k` jump between them, the side menu
+follows your scroll, and there is a light/dark switch. Then comes **the big
 picture**: an architecture diagram of the parts the change touches (changed parts highlighted,
 problem badges linked to the finding), sequence diagrams of the main flow or the failing race, and,
 for Python, a module map drawn from the imports so you see the blast radius. Then a suggested
@@ -129,7 +133,9 @@ impact, a fix as a diff and a test that fails today. It is self-contained and wo
 written to the scratch folder in your system temp directory and its path is printed.
 
 **Settings:** `.review-kit/config.json` in the repo or `~/.review-kit/config.json`:
-`{"html": "auto" | "always" | "flag" | "never"}`.
+`{"html": "auto" | "always" | "flag" | "never", "open": true, "html_dir": "~/reviews"}`. `open`
+launches the page in your browser as soon as it is written (`--open` does it once); `html_dir`
+keeps a copy of every page in a folder of your choice (`--html-out <dir>` for one run).
 
 ## Tested
 

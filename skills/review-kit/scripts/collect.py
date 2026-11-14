@@ -44,6 +44,8 @@ RISK = {
     "concurrency": r"\b(async\s+def|await|asyncio|thread|Lock|Semaphore|multiprocessing|celery|queue|retry|webhook|idempot)",
     "injection": r"(subprocess|os\.system|eval\(|exec\(|pickle|yaml\.load|\.execute\(|raw\(|f\"SELECT|f'SELECT|shell=True|innerHTML|mark_safe|\|safe)",
     "secrets": r"(secret|password|api_key|private_key|BEGIN [A-Z ]*PRIVATE KEY)",
+    "files": r"(zipfile|tarfile|extractall|send_file|send_from_directory|secure_filename|request\.files|UploadFile|"
+             r"os\.path\.join|shutil\.|tempfile|\.\./|urlopen|requests\.(get|post)|httpx\.)",
 }
 RUFF_SELECT = "F,B,E9,PLE,ASYNC,S,BLE,DTZ,RUF006,RUF012,PLW0120,PLW0602,PLW1508,PLW1510,PLW3301,TRY002"
 RUFF_REFINE = "SIM,PERF,RET,C4,PIE,FURB,UP,ERA,ARG,PLR1714,PLR5501,PLR1730,PLR6201,RUF005,RUF015,RUF019"
