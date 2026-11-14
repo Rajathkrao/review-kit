@@ -9,6 +9,7 @@ taken from the diff. Writes PKG/review.html. Self-contained: no network, no exte
 import datetime as _dt
 import html
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -274,8 +275,8 @@ nav.rail li{margin:0 0 6px}
 nav.rail a{color:var(--ink);text-decoration:none;display:flex;gap:8px;align-items:baseline}
 nav.rail a:hover{color:var(--accent);text-decoration:underline}
 nav.rail .tag{flex:none;font-weight:600;font-size:12px;min-width:2.2em}
-main{min-width:0}
-.where-from{font-size:14px;color:var(--soft);margin:0 0 14px}
+main{min-width:0;position:relative}
+.where-from{font-size:14px;color:var(--soft);margin:0 0 14px;padding-right:110px}
 h1{font:600 clamp(28px,4.2vw,42px)/1.15 var(--serif);letter-spacing:-.01em;margin:0 0 18px;max-width:24ch}
 .verdict{display:inline-block;font-weight:600;font-size:15px;padding:3px 12px;border-radius:999px;margin-bottom:12px}
 .verdict.crit{background:var(--crit-wash);color:var(--crit)}.verdict.imp{background:var(--imp-wash);color:var(--imp)}.verdict.ok{background:var(--ok-wash);color:var(--ok)}
@@ -374,6 +375,8 @@ footer code{font-size:12px;overflow-wrap:anywhere}
   nav.rail{position:static;max-height:none;border:1px solid var(--rule);border-radius:6px;padding:12px 14px;margin:0 0 28px;background:var(--sheet)}
   nav.rail ol{display:flex;flex-wrap:wrap;gap:4px 16px;margin-bottom:12px}
   nav.rail ol li{margin:0}
+  nav.rail h2:not(:first-child),nav.rail ol:not(:first-of-type){display:none}
+  nav.rail ol:first-of-type{margin-bottom:0}
 }
 @media (max-width:560px){
   .step{grid-template-columns:minmax(0,1fr)}
@@ -386,20 +389,111 @@ footer code{font-size:12px;overflow-wrap:anywhere}
 .pic-h{font:600 17px/1.4 var(--sans);margin:28px 0 4px}
 ol.order{padding-left:1.4em;max-width:80ch}ol.order li{margin:0 0 10px}ol.order .role{color:var(--soft)}
 .wal li{margin:0 0 10px}
-@media print{nav.rail{display:none}.layout{display:block}.copy{display:none}body{background:#fff}}
+.p-head{display:flex;align-items:center;gap:8px}
+.p-head .copy{margin-left:auto}
+.fold-btn,.chip{font:600 12px/1 var(--sans);color:var(--soft);background:transparent;border:1px solid var(--rule);border-radius:999px;padding:6px 11px;cursor:pointer}
+.fold-btn::after{content:" ▾"}.problem.shut .fold-btn::after{content:" ▸"}
+.problem.shut .p-body{display:none}.problem.shut{margin-bottom:28px}
+.chip.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.chip.critical{color:var(--crit)}.chip.important{color:var(--imp)}.chip.on.critical,.chip.on.important{color:var(--paper)}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0 14px}.toolbar .grow{flex:1}
+table.glance{width:100%;border-collapse:collapse;font-size:15px}
+table.glance td{padding:9px 12px 9px 0;border-top:1px solid var(--rule);vertical-align:top}
+table.glance td:last-child{white-space:nowrap;color:var(--soft);padding-right:0}
+table.glance a{color:var(--ink);text-decoration:none;font-weight:600}table.glance a:hover{text-decoration:underline}
+.g-fix{display:block;color:var(--soft);font-size:14px;margin-top:2px}
+.pill{display:inline-block;min-width:2.6em;text-align:center;padding:1px 8px;border-radius:999px;font-size:12px;background:var(--min-wash);color:var(--min)!important}
+.pill.critical{background:var(--crit-wash);color:var(--crit)!important}.pill.important{background:var(--imp-wash);color:var(--imp)!important}
+details.fold{border:0;padding:0;margin-top:26px}
+details.fold summary{display:flex;align-items:baseline;gap:10px;cursor:pointer;list-style:none}
+details.fold summary::-webkit-details-marker{display:none}
+details.fold summary h4{margin:0}details.fold summary h4::after{content:" ▸";color:var(--soft)}
+details.fold[open] summary h4::after{content:" ▾"}
+.fold-hint{font:13px/1.4 var(--mono);color:var(--soft)}
+kbd{font:12px/1 var(--mono);border:1px solid var(--rule);border-bottom-width:2px;border-radius:4px;padding:1px 5px;background:var(--sheet)}
+nav.rail a.on{color:var(--accent);font-weight:600}
+#theme{position:absolute;top:0;right:0}
+.hide{display:none!important}
+:root[data-theme="dark"]{
+  --paper:#141917; --sheet:#1a201e; --ink:#e3e8e5; --soft:#9aa7a1; --rule:#323b37; --rule-2:#262e2b;
+  --accent:#93b4e3; --accent-wash:#1f2a38;
+  --crit:#f0a39c; --crit-wash:#3a1f1c; --imp:#ecc06f; --imp-wash:#33281a; --min:#a9bccb; --min-wash:#212b33;
+  --ok:#94cfa7; --ok-wash:#1b2c22; --add:#1d2b21; --add-mark:#8ccb9b; --del:#33201e;
+  --code-ink:#dfe6e2; --tk:#d6a2e0; --ts:#9ed3ab; --tn:#f0b27a; --tc:#7d8a85; --tt:#93c2ec;
+}
+@media (max-width:640px){table.glance td:last-child{display:none}}
+@media print{.problem.shut .p-body{display:block}.toolbar,.fold-btn,#theme{display:none}
+nav.rail{display:none}.layout{display:block}.copy{display:none}body{background:#fff}}
 """
 
 JS = """
 document.querySelectorAll('button.copy').forEach(function(b){
+  var label=b.textContent;
   b.addEventListener('click',function(){
     var t=b.getAttribute('data-copy');
-    var done=function(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy'},1500)};
+    var done=function(){b.textContent='Copied';setTimeout(function(){b.textContent=label},1500)};
     if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(t).then(done)}
     else{var a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();
       try{document.execCommand('copy');done()}catch(x){}document.body.removeChild(a)}
   });
 });
+var probs=[].slice.call(document.querySelectorAll('article.problem'));
+function setShut(a,shut){a.classList.toggle('shut',shut);var b=a.querySelector('.fold-btn');if(b)b.setAttribute('aria-expanded',String(!shut))}
+probs.forEach(function(a){var b=a.querySelector('.fold-btn');if(b)b.addEventListener('click',function(){setShut(a,!a.classList.contains('shut'))})});
+function byId(i){return document.getElementById(i)}
+if(byId('fold-all'))byId('fold-all').addEventListener('click',function(){probs.forEach(function(a){setShut(a,true)})});
+if(byId('open-all'))byId('open-all').addEventListener('click',function(){probs.forEach(function(a){setShut(a,false)})});
+function openTarget(){var a=byId(location.hash.slice(1));if(a&&a.classList&&a.classList.contains('problem'))setShut(a,false)}
+window.addEventListener('hashchange',openTarget);openTarget();
+document.querySelectorAll('.chip[data-filter]').forEach(function(c){
+  c.addEventListener('click',function(){
+    var f=c.getAttribute('data-filter');
+    document.querySelectorAll('.chip[data-filter]').forEach(function(x){x.classList.toggle('on',x===c)});
+    document.querySelectorAll('article.problem,table.glance tr').forEach(function(x){
+      x.classList.toggle('hide',f!=='all'&&x.getAttribute('data-sev')!==f)});
+  });
+});
+document.addEventListener('keydown',function(ev){
+  if(ev.target.closest('input,textarea,select')||ev.metaKey||ev.ctrlKey||ev.altKey)return;
+  if(ev.key!=='j'&&ev.key!=='k')return;
+  var vis=probs.filter(function(a){return !a.classList.contains('hide')}),t=null;
+  vis.forEach(function(a){var y=a.getBoundingClientRect().top;
+    if(ev.key==='j'&&y>30&&!t)t=a;if(ev.key==='k'&&y<-10)t=a});
+  if(t)t.scrollIntoView({block:'start'});
+});
+if('IntersectionObserver' in window){
+  var links={};document.querySelectorAll('nav.rail a[href^="#"]').forEach(function(a){links[a.getAttribute('href').slice(1)]=a});
+  var cur=null,io=new IntersectionObserver(function(es){
+    es.forEach(function(en){if(en.isIntersecting&&links[en.target.id]){
+      if(cur)cur.classList.remove('on');cur=links[en.target.id];cur.classList.add('on');
+      var r=cur.getBoundingClientRect(),nav=cur.closest('nav');
+      if(nav&&(r.top<0||r.bottom>window.innerHeight))nav.scrollTop+=r.top-window.innerHeight/2}});
+  },{rootMargin:'-10% 0px -80% 0px'});
+  Object.keys(links).forEach(function(id){var t=byId(id);if(t)io.observe(t)});
+}
+var tb=byId('theme');
+if(tb){
+  try{var saved=localStorage.getItem('rk-theme');if(saved)document.documentElement.setAttribute('data-theme',saved)}catch(x){}
+  tb.addEventListener('click',function(){
+    var d=document.documentElement,now=d.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+    var next=now==='dark'?'light':'dark';d.setAttribute('data-theme',next);try{localStorage.setItem('rk-theme',next)}catch(x){}
+  });
+}
 """
+
+
+FIX_PREFIX_ONE = ("Fix this code review finding. Write the failing test first if the project has tests, make the "
+                  "smallest change that removes the root cause, then run the closest tests.\n\n")
+FIX_PREFIX_ALL = ("Fix these code review findings one at a time, most severe first. For each: write the failing "
+                  "test first if the project has tests, make the smallest change that removes the root cause, then "
+                  "run the closest tests. Do not commit.\n\n")
+
+
+def first_sentence(text, limit=150):
+    text = " ".join(str(text or "").split())
+    m = re.match(r"(.+?[\w)\]'\"`][.!?])(\s|$)", text)  # not at "..." or "e.g. "
+    text = m.group(1) if m else text
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
 
 
 def words(s):
@@ -562,7 +656,7 @@ def render(pkg: Path):
       </article>''')
 
     # --- problems, in depth
-    prob_html = []
+    prob_html, fix_prompts = [], []
     for f in findings:
         d = details.get(f["id"]) or {}
         sev = f.get("severity", "minor")
@@ -607,8 +701,9 @@ def render(pkg: Path):
         test = d.get("test") or {}
         test_html = ""
         if test.get("code") or test.get("explanation"):
-            test_html = (f'<h4>Prove it with a test</h4><div class="narr">{prose(test.get("explanation"))}</div>'
-                         + snippet_block(test.get("code"), test.get("name") or "Test that fails today"))
+            test_html = (f'<details class="fold"><summary><h4>Prove it with a test</h4><span class="fold-hint">{e(test.get("name") or "show the test")}</span></summary>'
+                         f'<div class="narr">{prose(test.get("explanation"))}</div>'
+                         + snippet_block(test.get("code"), test.get("name") or "Test that fails today") + '</details>')
         what = d.get("summary") or f.get("body")
         ev_bits = [f"Confidence {e(f.get('confidence'))} out of 100, {e(STATUS_TEXT.get(f.get('evidence_status'), f.get('evidence_status')))} ({e(f.get('evidence_status'))})."]
         if f.get("lenses"):
@@ -618,12 +713,24 @@ def render(pkg: Path):
         if f.get("contract_ref"):
             ev_bits.append(f"Breaks requirement {e(f['contract_ref'])}.")
         evidence = f'<div class="evidence"><p>{" ".join(ev_bits)}</p><p>Evidence: {inline_md(f.get("evidence"))}</p></div>'
+        where = f'{f.get("file")}:{ls}{("-" + str(le)) if le != ls else ""}'
+        prompt_bits = [f'{f["id"]} ({sev}): {f.get("title", "")}', f"Where: {where}", f'Problem: {what or ""}']
+        if scenario:
+            prompt_bits.append("How it breaks: " + " ".join(f"{k}) {x}" for k, x in enumerate(scenario, 1)))
+        prompt_bits.append(f'Fix: {fix.get("explanation") or f.get("recommendation") or ""}')
+        if test.get("explanation"):
+            prompt_bits.append(f'Test: {test.get("explanation")}')
+        fix_prompts.append("\n".join(b for b in prompt_bits if b.split(": ", 1)[-1].strip()))
+        one_fix = FIX_PREFIX_ONE + fix_prompts[-1]
         prob_html.append(f'''
-      <article class="problem {e(sev)}" id="{e(f["id"])}">
-        <span class="sev">{e(f["id"])} {e(SEV_LABEL.get(sev, sev))}</span>
+      <article class="problem {e(sev)}{" shut" if sev == "minor" else ""}" id="{e(f["id"])}" data-sev="{e(sev)}">
+        <div class="p-head"><span class="sev">{e(f["id"])} {e(SEV_LABEL.get(sev, sev))}</span>
+          <button class="copy" data-copy="{e(one_fix)}" title="Copy a prompt that asks Claude Code to fix this one">Copy fix prompt</button>
+          <button class="fold-btn" aria-expanded="{"false" if sev == "minor" else "true"}" title="Show or hide the details">Details</button></div>
         <h3>{inline_md(f.get("title"))}</h3>
-        <p class="loc"><code>{e(f.get("file"))}:{ls}{("-" + str(le)) if le != ls else ""}</code></p>
+        <p class="loc"><code>{e(where)}</code></p>
         <div class="narr">{prose(what)}</div>
+        <div class="p-body">
         {timeline}
         {code}
         {"".join(extra_files)}
@@ -631,6 +738,7 @@ def render(pkg: Path):
         {fix_html}
         {test_html}
         {evidence}
+        </div>
       </article>''')
 
     # --- remaining sections
@@ -703,6 +811,8 @@ def render(pkg: Path):
 
     nav = ['<nav class="rail" aria-label="Contents"><h2>On this page</h2><ol>',
            '<li><a href="#top">Summary</a></li>']
+    if findings:
+        nav.append('<li><a href="#glance">Problems at a glance</a></li>')
     if big:
         nav.append('<li><a href="#picture">The big picture</a></li>')
     if steps:
@@ -739,11 +849,27 @@ def render(pkg: Path):
     elif findings:
         walk = '<section><p class="sec-note">No walkthrough was written for this run. Problems are explained below.</p></section>'
 
+    glance = ""
     if findings:
+        rows = "".join(
+            f'<tr data-sev="{e(f.get("severity", "minor"))}"><td><a class="pill {e(f.get("severity", "minor"))}" href="#{e(f["id"])}">{e(f["id"])}</a></td>'
+            f'<td><a href="#{e(f["id"])}">{inline_md(f.get("title"))}</a><span class="g-fix">{inline_md(first_sentence(f.get("recommendation") or (details.get(f["id"]) or {}).get("fix", {}).get("explanation")))}</span></td>'
+            f'<td><code>{e(f.get("file"))}:{e(f.get("line_start"))}</code></td></tr>' for f in findings)
+        chips = '<button class="chip on" data-filter="all">All ' + str(len(findings)) + '</button>' + "".join(
+            f'<button class="chip {k}" data-filter="{k}">{SEV_LABEL.get(k, k)} {v}</button>' for k, v in counts.items() if v)
+        all_fix = FIX_PREFIX_ALL + "\n\n".join(fix_prompts)
+        glance = f'''
+    <section id="glance">
+      <h2 class="sec">Problems at a glance</h2>
+      <div class="toolbar">{chips}<span class="grow"></span>
+        <button class="copy" data-copy="{e(all_fix)}" title="Copy one prompt that asks Claude Code to fix every problem listed">Copy all fix prompts</button></div>
+      <table class="glance"><tbody>{rows}</tbody></table>
+    </section>'''
         probs = f'''
     <section id="problems">
       <h2 class="sec">Problems, in depth</h2>
-      <p class="sec-note">Most severe first. Each one shows how it breaks, the code involved, why it happens, what it costs, and how to fix and prove it.</p>
+      <p class="sec-note">Most severe first. Each one shows how it breaks, the code involved, why it happens, what it costs, and how to fix and prove it. Press <kbd>j</kbd> / <kbd>k</kbd> to move between problems.</p>
+      <div class="toolbar"><button class="chip" id="fold-all">Collapse all</button><button class="chip" id="open-all">Expand all</button></div>
       {"".join(prob_html)}
     </section>'''
     elif explain_only:
@@ -788,6 +914,7 @@ def render(pkg: Path):
 <body><div class="layout">
   {"".join(nav)}
   <main id="top">
+    <button id="theme" class="chip" title="Switch between light and dark">Light / dark</button>
     <p class="where-from">{e(meta.get("repo", ""))}, {e(meta.get("description", ""))}</p>
     <span class="verdict {verdict_cls}">{e(verdict_txt)}</span>
     <h1>{e(title)}</h1>
@@ -795,6 +922,7 @@ def render(pkg: Path):
     {f'<div class="narr"><p>{inline_md(fx.get("summary"))}</p></div>' if ex.get("one_liner") and fx.get("summary") else ""}
     {facts_html}
     {overview}
+    {glance}
     {big}
     {walk}
     {probs}
@@ -808,13 +936,33 @@ def render(pkg: Path):
     out.write_text(page)
     for w in depth_warnings(findings, details, steps, src):
         print(f"thin: {w}", file=sys.stderr)
+    return out, meta.get("config") if isinstance(meta.get("config"), dict) else {}
+
+
+def deliver(out: Path, cfg, copy_to=None, open_it=False):
+    """Optionally copy the page somewhere the user can open it, and open it in a browser."""
+    copy_to = copy_to or cfg.get("html_dir")
+    if copy_to:
+        target = Path(str(copy_to)).expanduser()
+        target.mkdir(parents=True, exist_ok=True)
+        out = Path(shutil.copy2(out, target / f"{out.parent.name}.html"))
     print(out)
+    print(out.resolve().as_uri())
+    if open_it or cfg.get("open") is True:
+        import webbrowser
+        try:
+            webbrowser.open(out.resolve().as_uri())
+        except Exception as exc:  # noqa: BLE001 - a missing browser must not fail the review
+            print(f"could not open a browser: {exc}", file=sys.stderr)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        sys.exit("usage: render_html.py PKG")
+    args = sys.argv[1:]
+    if not args or args[0].startswith("-"):
+        sys.exit("usage: render_html.py PKG [--open] [--copy-to DIR]")
+    copy_to = args[args.index("--copy-to") + 1] if "--copy-to" in args[:-1] else None
     try:
-        render(Path(sys.argv[1]))
+        page, config = render(Path(args[0]))
+        deliver(page, config, copy_to, "--open" in args)
     except (ValueError, OSError, TypeError, KeyError) as exc:
         sys.exit(f"HTML generation failed: {exc}")
