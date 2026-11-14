@@ -302,3 +302,21 @@ depth); it was not run as a suite. Other modes, one run each on the dev fixtures
 | test `--run` | plan produced; the eval harness's permission list blocked `python -m pytest`, so nothing ran | 46 s | $0.32 |
 
 Several runs in this pass were cut off by the account's 5-hour usage limit and repeated.
+
+## Gaps closed after #26 (2026-11-14, main at cf29f82)
+
+| Run | Result | Time | Cost |
+|---|---|---|---|
+| test mode `--run` (pytest installed) | 2 tests passed; 3 of 3 mutations killed, each in a throwaway copy | 56 s | $0.43 |
+| pr mode `--quick` against `evals/fakegh` (PR 42, ts-invoices) | 6 findings; the two open review comments judged (one pushed back with the CLAUDE.md rule, one merged into a finding), the resolved one skipped; nothing posted | 66 s | $0.44 |
+| quick, harder set | 28/28 after reading the reports, 0 confirmed findings on clean branches | about 55 s per case | about $0.40 per case |
+
+Notes on the quick run: `score.py` shows 27/28 because the report words D3 as "uses the
+discounted total" and bolds "before" (keys raised with the eval set's owner). One clean case
+(coupon-admin) was cut off by the account usage limit and re-run separately: no findings.
+Posting with `--post` was not run end to end here; the payload and submit path are covered by
+the unit tests with the fake `gh`.
+
+Tried and dropped: printing the text of verification.md, output-format.md and python.md with
+the context call so quick needs no reference read. On four cases the time did not move (70, 58,
+47, 64 s against 61, n/a, 47, 64 s) and cost rose from about $0.40 to about $0.63 per case.
