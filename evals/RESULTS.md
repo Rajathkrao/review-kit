@@ -278,3 +278,27 @@ followed: harm that needs code which doesn't exist yet is out of scope, and "Wor
 at most 4 items and no trigger-less hardening ideas. Re-run on three cases: statement-export
 0 findings and 2 worth-a-look items (was 1 and 6), multi-currency 5/5, coupon-redemption 5/5.
 The other three clean cases and the full set were not re-run with these two rules.
+
+## Full testing pass (2026-11-13/14, main at f22a4d8 plus the walkthrough-page PR)
+
+Harder set, whole suite re-run after #25:
+
+| Mode | Planted bugs | Confirmed findings on clean branches | Worth-a-look items (all 9 cases) | Time | Cost |
+|---|---|---|---|---|---|
+| quick | 28/28 | 0 | 16 | 658 s | $3.66 |
+| deep (`--no-html`) | 28/28 | 0 | 12 | 1,540 s | $15.02 |
+
+`/rk:review` picks deep for 4 of the 9 cases and quick for 5 (from `collect.py`'s suggested
+depth); it was not run as a suite. Other modes, one run each on the dev fixtures:
+
+| Mode | Result | Time | Cost |
+|---|---|---|---|
+| refine (folder) | 2 bugs first, 7 refactors, about -85 of 125 lines | 77 s | $0.39 |
+| explain (folder) | page with diagrams and an 8-step tour | 78 s | $0.48 |
+| spec | 9 requirements checked, 6 missing | 142 s | $0.95 |
+| arch (HTML on) | 9 findings, page rendered | 298 s | $1.85 |
+| full (HTML on) | 6 lenses, 3 verifiers, page rendered | 355 s | $4.03 |
+| quick `--html` | 223 s before, 175 s with the walkthrough writer in the background | 175 s | $1.15 |
+| test `--run` | plan produced; the eval harness's permission list blocked `python -m pytest`, so nothing ran | 46 s | $0.32 |
+
+Several runs in this pass were cut off by the account's 5-hour usage limit and repeated.
