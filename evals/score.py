@@ -69,9 +69,15 @@ def dismissed_blocks(text: str) -> list[str]:
     return [b for b in re.split(r"\n(?=\s*[-*]\s|\s*\d+\.\s|\|)", text) if b.strip()]
 
 
+def _plain(text: str) -> str:
+    """Lower-case and drop Markdown emphasis/code markers, so "**before** the discount" still
+    matches the key "before the discount"."""
+    return text.lower().replace("*", "").replace("`", "")
+
+
 def hit(item, block: str) -> bool:
-    bl = block.lower()
-    return Path(item["file"]).name.lower() in bl and any(k.lower() in bl for k in item["keys"])
+    bl = _plain(block)
+    return Path(item["file"]).name.lower() in bl and any(_plain(k) in bl for k in item["keys"])
 
 
 def severity(block: str) -> str:
