@@ -312,9 +312,9 @@ Several runs in this pass were cut off by the account's 5-hour usage limit and r
 | quick, harder set | 28/28 after reading the reports, 0 confirmed findings on clean branches | about 55 s per case | about $0.40 per case |
 
 Notes on the quick run: `score.py` shows 27/28 because the report words D3 as "uses the
-discounted total" and bolds "before" (keys raised with the eval set's owner). One clean case
-(coupon-admin) was cut off by the account usage limit; its only re-run was with the dropped
-variant below (no findings), so the table's quick row covers 8 of the 9 cases on unchanged main.
+discounted total" and bolds "before" (keys raised with the eval set's owner). The clean
+coupon-admin case was cut off by the account usage limit and re-run alone afterwards on
+unchanged main: 0 findings, 2 worth-a-look items, 63 s, $0.38. The quick row covers all 9 cases.
 Posting with `--post` was not run end to end here; the payload and submit path are covered by
 the unit tests with the fake `gh`.
 
