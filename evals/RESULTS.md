@@ -313,7 +313,8 @@ Several runs in this pass were cut off by the account's 5-hour usage limit and r
 
 Notes on the quick run: `score.py` shows 27/28 because the report words D3 as "uses the
 discounted total" and bolds "before" (keys raised with the eval set's owner). One clean case
-(coupon-admin) was cut off by the account usage limit and re-run separately: no findings.
+(coupon-admin) was cut off by the account usage limit; its only re-run was with the dropped
+variant below (no findings), so the table's quick row covers 8 of the 9 cases on unchanged main.
 Posting with `--post` was not run end to end here; the payload and submit path are covered by
 the unit tests with the fake `gh`.
 
