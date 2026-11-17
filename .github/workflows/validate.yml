@@ -20,7 +20,7 @@ jobs:
           done
       - name: Scripts compile
         run: |
-          python -m py_compile skills/review-kit/scripts/*.py evals/score.py evals/build_hard_fixtures.py evals/check_keys.py
+          python -m py_compile skills/review-kit/scripts/*.py evals/score.py evals/build_hard_fixtures.py evals/check_keys.py evals/build_refine_fixture.py
           bash -n skills/review-kit/scripts/codex_review.sh
           bash -n evals/run_case.sh
           bash -n evals/run_adversarial_baseline.sh
@@ -43,6 +43,17 @@ jobs:
           python "$GITHUB_WORKSPACE/skills/review-kit/scripts/detect_tests.py" "$P" > /dev/null
           cd /tmp/fx/cs-orders && git checkout -q feature/cancel-order
           python "$GITHUB_WORKSPACE/skills/review-kit/scripts/collect.py" --base main | grep -q "0012-order-cancellation"
+      - name: Refine fixture builds, its tests pass, the structure map finds what was planted
+        run: |
+          python evals/build_refine_fixture.py /tmp/refine
+          cd /tmp/refine/py-notify && python -m unittest -q
+          python "$GITHUB_WORKSPACE/skills/review-kit/scripts/collect.py" --mode refine --whole --target notify > /tmp/ctx-refine.txt
+          grep -q "16 special cases" /tmp/ctx-refine.txt
+          grep -q "dispatch() only forwards its arguments to send()" /tmp/ctx-refine.txt
+          grep -q "notify/service.py and notify/settings.py: together in 4" /tmp/ctx-refine.txt
+          P=$(tail -1 /tmp/ctx-refine.txt | sed 's/^PKG=//')
+          python "$GITHUB_WORKSPACE/skills/review-kit/scripts/refine_map.py" --compare "$P/refine-before.json" | grep -q "| Special cases | 16 | 16 | same |"
+          test -z "$(git status --porcelain --untracked-files=all | grep -v __pycache__)"
       - name: Harder eval set builds, answer keys line up, collector handles a too-large diff
         run: |
           python evals/build_hard_fixtures.py /tmp/hard

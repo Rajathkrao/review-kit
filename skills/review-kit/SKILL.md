@@ -2,7 +2,7 @@
 name: review-kit
 description: >-
   Fast, purpose-aware code review with modes review (auto depth), quick, deep (parallel adversarial
-  lenses), pr, spec, arch, refine (Ponytail-style simplify/reuse/refactor, optional --apply), explain
+  lenses), pr, spec, arch, refine (structural moves plus simplify/reuse refactors, measured before and after, optional --apply), explain
   (HTML walkthrough with architecture and sequence diagrams), test and full. Use when the user invokes $review-kit, runs any /rk:
   command, or asks for a review-kit review of a diff, branch, commit range, path or GitHub pull
   request. Checks the change against its stated purpose, verifies every finding against the code,
@@ -35,7 +35,9 @@ In Codex, read `references/codex.md` first. Invoke as `$review-kit <mode> [targe
 | `--run` | pre-approve running tests and repro scripts | off |
 | `--all` | also show minor findings | off |
 | `--quick` | in pr mode, quick depth instead of deep | off |
-| `--apply` | in refine mode, make the refactors (tests after each) | off |
+| `--apply` | in refine mode, make the changes (baseline tests, a pinning test where none exists, tests after each step) | off |
+| `--for "<next change>"` | in refine mode, rank everything by how much it eases that change | rank by where change keeps landing |
+| `--comments` / `--tests` | in refine mode, also clean up comments that repeat the code / tests that cannot fail | off |
 
 `review` mode uses the `suggested depth` that the context command prints (quick for small or
 low-risk changes, deep for large or risky ones). A bare PR number or URL means `pr` mode.
@@ -52,7 +54,9 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/collect.py" --mode <mode> [--target "<targe
 ```
 
 In refine and explain modes with a file or folder target, pass `--whole`: it reviews the whole current files,
-not only their pending changes, and adds ruff's simplification rules to the hints.
+not only their pending changes, and adds ruff's simplification rules to the hints. In refine mode
+the output also carries a **structure map** (scoreboard, special cases, wrappers, copies, imports,
+git churn and files that change together), and `$PKG/refine-before.json` for the after-apply comparison.
 
 It prints everything the review needs and writes nothing inside the repository: size and risk
 signals, suggested depth, files, commits, PR description, purpose documents, project rule files,
@@ -107,11 +111,13 @@ When the HTML walkthrough is on, also launch one `rk:walkthrough-writer` in that
 and the source root: it writes `$PKG/explainer.json` while the lenses hunt.
 If you cannot spawn subagents, run the lenses yourself in sequence and say "lenses ran inline".
 
-**Refine.** Read `references/refine.md` and follow it: map the code and the helpers the codebase
-already has, then delete, reuse, merge, simplify and restructure, each with a patch and the lines
-it saves. Bugs you notice come first, as findings. Its report format is in refine.md. With
-`--apply` (or "apply 2 and 4"), it is the one mode allowed to edit files, one refactor at a time,
-with the closest test after each.
+**Refine.** Read `references/refine.md` and follow it: start from the structure map the context
+command printed, run its three structure tests (what changes together, what survives deletion,
+which special cases are real), group the problems into at most three structural moves, then list
+the line-level refactors (delete, reuse, merge, simplify), each with a patch and the lines it
+saves. Bugs you notice come first, as findings. Its report format is in refine.md. With
+`--apply` (or "apply 2 and 4"), it is the one mode allowed to edit files: baseline tests first,
+one step at a time with the closest test after each, then the scoreboard before and after.
 
 ## 3. Verify (no disproof, no drop)
 

@@ -555,6 +555,17 @@ def resolve(root, target, base_opt, pkg, whole=False):
     return diff, commits, mb, "WORKTREE", desc, kind, None, "", untracked, []
 
 
+def structure_map(src_root, paths, pkg):
+    """Refine mode: the measured structure map, with its scoreboard saved for the after-apply comparison."""
+    try:
+        import refine_map
+        m = refine_map.build(Path(src_root), paths)
+        (pkg / "refine-before.json").write_text(json.dumps({"paths": paths, "score": m["score"]}, indent=2))
+        return refine_map.render(m).rstrip()
+    except Exception as exc:  # noqa: BLE001 - the map is a help; a refine run must survive without it
+        return f"## Structure map\n- not available ({type(exc).__name__}: {exc}); map the code by reading it"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", default="")
@@ -648,6 +659,8 @@ def main():
     if used_by:
         L += ["", "## Changed Python symbols and their call sites (check callers when a contract changed)", *[f"- {u}" for u in used_by]]
     L += ["", "## Tests changed", *([f"- {p}" for p in tests_changed] or ["- none"])]
+    if a.mode in ("refine", "standards") and files:
+        L += ["", structure_map(src_root, [f["path"] for f in files if f["status"] != "deleted"], pkg)]
     if untracked:
         L += ["", "## Untracked files included", *[f"- {u}" for u in untracked]]
     summary = "\n".join(L) + "\n"

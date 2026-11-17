@@ -321,3 +321,34 @@ the unit tests with the fake `gh`.
 Tried and dropped: printing the text of verification.md, output-format.md and python.md with
 the context call so quick needs no reference read. On four cases the time did not move (70, 58,
 47, 64 s against 61, n/a, 47, 64 s) and cost rose from about $0.40 to about $0.63 per case.
+
+## Refine mode: structure map, moves and measured apply (2026-11-17)
+
+Fixture: `evals/build_refine_fixture.py` builds `py-notify`, a working 103-line package with one
+planted bug, per-channel rules spread over four files as `channel == "..."` branches, limits
+copied into a settings file that git shows changing together with the service, three copied
+send functions, a one-subclass base class, a pass-through wrapper, an unused flag and dead code.
+One headless run each of `/rk:refine notify/`, before (main at 47e2cd4) and after this change:
+
+| | Before | After |
+|---|---|---|
+| Planted bug (empty list divides by zero) | found | found |
+| Channel table (the structural fix) | found, as refactors 2 and 3 | found, as one move with what it removes, steps and strength |
+| Dead code, wrapper, flag, base class, copies | all found | all found |
+| Says what stays on purpose (SMS retry cap, SMS pause) | pause only | both, each kept as a named row |
+| Tangle measured | no | 16 special cases, 12 removed by the move, 16 to 2 overall |
+| Names the untested paths the move touches | as a separate "add a test" item | per move ("Pinned by"), test written first on apply |
+| Time / cost | 81 s / $0.43 | 82 s / $0.46 |
+
+`/rk:refine notify/ --apply --run` after this change: 106 s, $0.64. Baseline tests run first (4
+pass), a pinning test added before the move, every step tested, nothing reverted. Scoreboard from
+`refine_map.py --compare`: code lines 103 to 48, functions 13 to 6, longest function 19 to 8,
+nesting 4 to 1, branch points 23 to 4, special cases 16 to 3. 7 tests pass afterwards. The
+planted bug was reported and left in place, as intended (a fix changes behavior). The run staged
+one deletion by mistake and unstaged it; refine.md now says not to touch the index.
+
+The structure map itself takes about 1 s on this repository's own scripts (2,800 lines) and is
+unit-tested in `tests/test_refine_map.py`. Not measured: a large real codebase, `--for`,
+`--comments`, `--tests`, and non-Python targets (those get line counts and git history only).
+The review modes were not re-run: this change touches only refine mode, and `collect.py` prints
+the map only when the mode is refine.

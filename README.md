@@ -48,7 +48,7 @@ review uses the Codex CLI if installed and logged in, otherwise a different Clau
 | `/rk:pr <number\|url>` | Deep review of a GitHub PR, judges its existing comments, `--post` to publish after you approve |
 | `/rk:spec [target]` | Requirement-by-requirement check against the ADR / spec / plan |
 | `/rk:arch [target]` | Design, boundaries, contracts, types, and whether the approach is right |
-| `/rk:refine [file\|folder\|target]` | Make code smaller and more reusable: delete, reuse existing helpers, stdlib, kill one-off abstractions, merge copies, flatten logic. Patches with lines saved; `--apply` makes the edits and tests each |
+| `/rk:refine [file\|folder\|target]` | Make code smaller and easier to change. Up to three structural moves that each remove several problems, then line-level refactors (delete, reuse, stdlib, merge copies, flatten logic) with patches and lines saved. Measured before and after; `--apply` makes the edits and tests each step |
 | `/rk:explain [file\|folder\|target]` | Understand code: an HTML page with architecture and sequence diagrams, a Python module map, reading order and a step-by-step tour. No bug hunt |
 | `/rk:test [target]` | Finds and runs the tests that cover the change (asks first), mutation-checks them |
 | `/rk:fix [numbers]` | Applies the findings you pick (default: every Critical and Important): failing test first, smallest fix, closest tests run, reverted if it breaks something |
@@ -57,7 +57,7 @@ review uses the Codex CLI if installed and logged in, otherwise a different Clau
 **Target**: nothing (current branch vs its base, plus uncommitted work), `main...feature`, a commit,
 a PR number or URL, or a path.
 **Flags**: `--html` / `--no-html` · `--second-model` · `--run` (pre-approve tests and repro scripts) ·
-`--all` (show minor findings) · `--open` · `--html-out <dir>` · `--focus "auth changes"` · `--base develop` · pr mode: `--post`, `--quick` · refine: `--apply`.
+`--all` (show minor findings) · `--open` · `--html-out <dir>` · `--focus "auth changes"` · `--base develop` · pr mode: `--post`, `--quick` · refine: `--apply`, `--for "next change"`, `--comments`, `--tests`.
 
 ## Why it is fast
 
@@ -98,13 +98,41 @@ the callers of every changed function, so a broken caller is caught without craw
 ## Refine mode
 
 `/rk:refine payouts/` reads the whole folder (or a file, branch or PR) the way a lazy senior
-developer would: what can be deleted, which helper the codebase already has, what the standard
-library already does, which abstraction has one implementation, which near-copies should merge,
-and which functions mix jobs. Bugs it notices come first. Every refactor comes with a patch, the
-lines it saves and why behavior stays the same (callers checked), and the report ends with
-`Lean: −N lines`. `--apply` (or "apply 2 and 4") makes the edits one at a time and runs the
-closest test after each, reverting any that breaks. Inspired by
-[Ponytail](https://github.com/DietrichGebert/ponytail).
+developer would, at two levels in one pass and without asking anything first.
+
+**It starts from measurements, not impressions.** The context command prints a structure map in
+about a second (`scripts/refine_map.py`, standard library only): a scoreboard (code lines,
+longest function, nesting, special cases), every special case (a branch for one value, a
+swallowed exception, a sleep, a flag parameter, a skipped test), pass-through wrappers, copied
+function bodies, literals repeated across files, names nothing else mentions, who imports whom,
+import cycles, which files keep changing, and which files change together in git without
+importing each other.
+
+**Moves, then refactors.** Three tests turn those leads into problems: what changes together but
+lives apart, what is tied together but changes apart, and what survives being deleted. It then
+asks what one change would make several problems disappear (a table instead of scattered
+branches, one owner for a rule that lives in three places) and reports at most three such
+*moves*, each with what it removes, a before/after sketch, safe steps, the tests that pin it and
+a strength (Strong or Worth exploring; weaker ideas are not shown). Below them come the
+line-level refactors: what can be deleted, which helper the codebase already has, what the
+standard library already does, which abstraction has one implementation, which near-copies
+should merge. Each has a patch, the lines it saves and why behavior stays the same (callers
+checked). Bugs it notices come first.
+
+**`--apply`** (or "apply 2 and 4") runs the covering tests first as a baseline, writes a small
+test that pins today's behavior where a move touches untested code, makes the edits one step at a
+time with the closest test after each (reverting what breaks), then prints the scoreboard before
+and after and looks once more for what the moves exposed.
+
+**Flags.** `--for "add a third payment provider"` ranks everything by how much it eases the change
+you are about to make; without it, code that changes often ranks first. `--comments` also removes
+comments that only repeat the code. `--tests` also flags tests that cannot fail or only mirror
+the implementation. Tell it a structure stays, with a reason, and it is remembered in
+`.review-kit/learnings.md` and not proposed again.
+
+Line-level checklist inspired by [Ponytail](https://github.com/DietrichGebert/ponytail). The
+structural half was shaped by comparing against the untangle-codebase skill and Matt Pocock's
+improve-codebase-architecture skill (ideas only, no text).
 
 ## Learnings
 
