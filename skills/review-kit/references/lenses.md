@@ -49,7 +49,9 @@ Return one JSON object as your final message (no file writes):
 ```
 
 `severity`: `critical` | `important` | `minor`. `spec_status` only from the contract lens.
-The refine lens adds `"kind": "delete|reuse|stdlib|yagni|merge|simplify|structure|types"`,
+The refine lens adds `"kind": "move|delete|reuse|stdlib|yagni|merge|simplify|structure|types"`
+(a `move` also carries `"removes": ["<problem at path:line>", …]`, `"strength": "strong|worth-exploring"`
+and `"steps": [...]`),
 `"lines_saved": <int>`, `"same_behavior": "<what stays identical, callers checked>"` and
 `"patch": "<unified-diff excerpt>"` to each candidate.
 
@@ -128,8 +130,11 @@ Is the structure right, and does it get better or worse?
 Every architecture candidate names the structural remedy and what it deletes or simplifies.
 
 ## refine  (refine, full)
-Make the code smaller, clearer and more reusable without changing behavior: delete, reuse an
-existing helper (name its path), use the stdlib, remove one-implementation abstractions, merge
-near-copies, flatten control flow, split functions by job. The full checklist, behavior checks and
-"never cut" list are in `references/refine.md`; read it. Every candidate carries a patch and the
-lines it saves. A bug noticed while refining is reported as an ordinary candidate first.
+Make the code smaller, clearer and easier to change without changing behavior. Start from the
+structure map in `summary.md`. First structure: what changes together but lives apart, what is
+tied together but changes apart, what survives the delete-it test, which special cases are real;
+group those into at most three moves that each remove several problems. Then line-level: delete,
+reuse an existing helper (name its path), use the stdlib, remove one-implementation abstractions,
+merge near-copies, flatten control flow, split functions by job. The tests, checklist, behavior
+checks and "never cut" list are in `references/refine.md`; read it. Every candidate carries a
+patch (a move: a sketch plus its steps) and the lines it saves. A bug noticed while refining is reported as an ordinary candidate first.
