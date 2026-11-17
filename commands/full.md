@@ -1,5 +1,5 @@
 ---
-description: "Everything: deep + architecture, then offer tests"
+description: "Everything: deep + architecture + refine, then offer tests"
 argument-hint: '[target] [--second-model] [--run] [--post]'
 ---
 

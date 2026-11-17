@@ -34,9 +34,11 @@ claude --plugin-dir ./review-kit
 ```
 </details>
 
-**Requirements:** `git` and `python3` (3.9+). Recommended: `ruff` on PATH (`pip install ruff`) for
-a sub-second static pass over changed Python lines. PR mode needs `gh auth login`. Second-model
-review uses the Codex CLI if installed and logged in, otherwise a different Claude model.
+**Requirements:** `git` and `python3` (the helper scripts use only the standard library and target
+3.9+; CI runs them on 3.12). Recommended: `ruff` on PATH (`pip install ruff`) for a fast static
+pass over added Python lines; without it the review still runs and says ruff is missing. PR mode
+needs `gh auth login`. Second-model review uses the Codex CLI if installed and logged in,
+otherwise a different Claude model.
 
 ## Commands
 
@@ -53,6 +55,10 @@ review uses the Codex CLI if installed and logged in, otherwise a different Clau
 | `/rk:test [target]` | Finds and runs the tests that cover the change (asks first), mutation-checks them |
 | `/rk:fix [numbers]` | Applies the findings you pick (default: every Critical and Important): failing test first, smallest fix, closest tests run, reverted if it breaks something |
 | `/rk:full [target]` | deep + architecture + refine, then offers tests |
+| `/rk:standards` | Old name, kept as an alias of `/rk:refine` |
+
+`/rk:review` also takes a mode as its first word (`/rk:review deep`), and a bare PR number or URL
+means pr mode.
 
 **Target**: nothing (current branch vs its base, plus uncommitted work), `main...feature`, a commit,
 a PR number or URL, or a path.
@@ -63,7 +69,9 @@ a PR number or URL, or a path.
 
 - **One context call.** `collect.py` prints everything the review needs in one tool result: size,
   risk signals, suggested depth, purpose docs, project rules, learnings, ruff hints, call sites of
-  changed Python functions, and the numbered diff. Nothing is written in your repo.
+  changed Python functions, and the numbered diff (inline up to about 1,500 lines; larger diffs
+  are read from a scratch folder, riskiest areas first, and the report lists what was skipped).
+  The command writes nothing in your repo.
 - **No questions.** It never stops to ask which mode or what the change is for. It infers the
   purpose and says what it used.
 - **Parallel where it pays.** Quick mode is a single inline pass. Deep mode runs its lenses and its
@@ -100,13 +108,15 @@ the callers of every changed function, so a broken caller is caught without craw
 `/rk:refine payouts/` reads the whole folder (or a file, branch or PR) the way a lazy senior
 developer would, at two levels in one pass and without asking anything first.
 
-**It starts from measurements, not impressions.** The context command prints a structure map in
-about a second (`scripts/refine_map.py`, standard library only): a scoreboard (code lines,
-longest function, nesting, special cases), every special case (a branch for one value, a
-swallowed exception, a sleep, a flag parameter, a skipped test), pass-through wrappers, copied
-function bodies, literals repeated across files, names nothing else mentions, who imports whom,
-import cycles, which files keep changing, and which files change together in git without
-importing each other.
+**It starts from measurements, not impressions.** The context command prints a structure map
+(`scripts/refine_map.py`, standard library only; under a second on this repo's own 3,100 lines of
+scripts, not yet timed on a large codebase): a scoreboard (code lines, functions, longest
+function, nesting, special cases), every special case (a branch for one value, a swallowed
+exception, a sleep, a flag parameter, a skipped test, a type switch, a workaround comment),
+pass-through wrappers, base classes with one subclass, copied function bodies, literals repeated
+across files, names nothing else mentions, who imports whom, import cycles, which files keep
+changing, and which files change together in git without importing each other. The map reads
+Python through `ast`; other languages get line counts and git history only.
 
 **Moves, then refactors.** Three tests turn those leads into problems: what changes together but
 lives apart, what is tied together but changes apart, and what survives being deleted. It then
@@ -127,7 +137,8 @@ and after and looks once more for what the moves exposed.
 **Flags.** `--for "add a third payment provider"` ranks everything by how much it eases the change
 you are about to make; without it, code that changes often ranks first. `--comments` also removes
 comments that only repeat the code. `--tests` also flags tests that cannot fail or only mirror
-the implementation. Tell it a structure stays, with a reason, and it is remembered in
+the implementation. These three flags are written into the skill's instructions but have not
+been run end to end yet, so treat them as new. Tell it a structure stays, with a reason, and it is remembered in
 `.review-kit/learnings.md` and not proposed again.
 
 Line-level checklist inspired by [Ponytail](https://github.com/DietrichGebert/ponytail). The
@@ -161,18 +172,40 @@ impact, a fix as a diff and a test that fails today. It is self-contained and wo
 written to the scratch folder in your system temp directory and its path is printed.
 
 **Settings:** `.review-kit/config.json` in the repo or `~/.review-kit/config.json`:
-`{"html": "auto" | "always" | "flag" | "never", "open": true, "html_dir": "~/reviews"}`. `open`
+`{"html": "always" | "never", "open": true, "html_dir": "~/reviews"}`. Leave `html` out for the
+default (on in the modes above, or with `--html`). `open`
 launches the page in your browser as soon as it is written (`--open` does it once); `html_dir`
 keeps a copy of every page in a folder of your choice (`--html-out <dir>` for one run).
 
 ## Tested
 
-Real headless Claude Code runs on seeded-bug repos, before and after each change, are recorded in
-the PR descriptions and `evals/RESULTS.md`. Run them with `evals/run_case.sh`.
+Results of real headless Claude Code runs, with seconds and cost, are in `evals/RESULTS.md`.
+They are mostly single runs, so read them as a record, not a benchmark.
+
+- **Original set** (`evals/fixtures.tgz`): five small seeded-bug branches in TypeScript, C# and
+  Angular. Quick and deep both find every planted bug, so it no longer tells versions apart.
+- **Harder Python set** (`evals/hard/`, described in its README): nine branches across five
+  small apps, with 28 planted bugs on five of them, four clean branches to catch false alarms,
+  and one diff of about 1,240 lines. Latest runs (2026-11-13/14): quick and deep each found
+  28/28 with no confirmed findings on the clean branches; quick took about 55 s and $0.40 per
+  case, deep (`--no-html`) 1,540 s and $15.02 for the whole set.
+- **Refine** (`evals/build_refine_fixture.py` builds a small package with planted problems): one
+  report run in 82 s for $0.46, and one `--apply --run` in 106 s for $0.64 that took the package
+  from 103 to 48 code lines with its tests passing.
+
+Not run end to end yet: `--post` against real GitHub (covered by unit tests with a fake `gh`),
+`--second-model` with a real Codex login (tested with a stub), refine's `--for`, `--comments` and
+`--tests`, and refine on a large codebase or on non-Python code.
 
 ```bash
-python -m unittest discover -s tests -v   # no network or model needed
+evals/run_case.sh py-shop feature/coupon-redemption my-run "/rk:quick"   # one case
+JOBS=8 evals/run_hard.sh my-tag "/rk:quick"                              # the whole harder set
+evals/score.py --suite my-tag                                            # rescore it
+python -m unittest discover -s tests -v                                  # unit tests, no network or model
 ```
 
-Python and shell helpers are dependency-free. Tests use temporary repositories and fake CLIs,
-including PR posting; they never publish anything.
+The eval scripts need the `claude` CLI, run it with `--dangerously-skip-permissions` on throwaway
+fixture repos, and spend real usage. Runs land in `evals/runs/`. The
+unit tests use temporary repositories and fake CLIs, including PR posting, and never publish
+anything. The helper scripts are dependency-free; only the frontmatter check in CI needs PyYAML
+(`tests/requirements.txt`).
