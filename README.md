@@ -34,6 +34,51 @@ claude --plugin-dir ./review-kit
 ```
 </details>
 
+## Which command when
+
+You only need to remember `/rk:review`. It picks quick or deep for you. Reach for the others when
+you want something specific:
+
+| You want to… | Run |
+|---|---|
+| Check my change before I commit or push (the everyday case) | `/rk:review` |
+| A fast check of a small change, in about a minute | `/rk:quick` |
+| A thorough check of a big or risky change, with the HTML walkthrough | `/rk:deep` |
+| Review someone's GitHub PR (and optionally post comments) | `/rk:pr 123` |
+| Know whether the change does what the spec, ADR or ticket says | `/rk:spec` |
+| Know whether the design is right, not just the lines | `/rk:arch` |
+| Make a file or folder shorter and cleaner, not hunt bugs | `/rk:refine path/` |
+| Understand unfamiliar code (diagrams, reading order), no review | `/rk:explain path/` |
+| Fix the problems the last review found | `/rk:fix` (or "fix 1 and 3") |
+| Run and stress the tests that cover the change | `/rk:test` |
+| Everything before a big merge: deep + arch + refine | `/rk:full` |
+
+Bug finding is `review`, `quick`, `deep` and `pr`. Cleanup is `refine`. Understanding is `explain`.
+
+## Where the results go
+
+- **The report** is printed in the chat. Nothing is written in your repo.
+- **The HTML walkthrough** (deep, full, pr, arch, explain, or `--html`) is saved as `review.html`
+  in a run folder under your system temp directory, such as `/tmp/review-kit/<repo>-<time>-<id>/`
+  on Linux or `$TMPDIR/review-kit/…` on macOS. The path is printed at the end of the report, and
+  `--open` opens it. Run folders older than 7 days are deleted, so set `html_dir` (see Settings)
+  or pass `--html-out <dir>` to keep copies.
+- **`findings.json`** sits in the same run folder, written only for the walkthrough or `--post`.
+- **Learnings** ("remember: …") go to `<repo>/.review-kit/learnings.md`, the only file it writes
+  in your repo, and only when you ask.
+- **PR comments** are posted only with `/rk:pr … --post`, after you approve them.
+
+## Updating and checking your version
+
+Claude Code installs a copy of the plugin and keeps it per version, so a new commit reaches you
+only when `version` in `.claude-plugin/plugin.json` goes up. Every change to the skill, commands,
+agents or scripts bumps it (CI checks this), and `CHANGELOG.md` says what each version changed.
+
+To get the latest: `/plugin marketplace update review-kit-marketplace`, then start a new session.
+To check what you have: open `/plugin`, go to Installed, and look at the version next to `rk`.
+Every report also shows it on its **Execution** line (`rk v1.3.0`), and the HTML page shows it in
+its footer. If that number is older than the top entry of `CHANGELOG.md`, update.
+
 **Requirements:** `git` and `python3` (the helper scripts use only the standard library and target
 3.9+; CI runs them on 3.12). Recommended: `ruff` on PATH (`pip install ruff`) for a fast static
 pass over added Python lines; without it the review still runs and says ruff is missing. PR mode
