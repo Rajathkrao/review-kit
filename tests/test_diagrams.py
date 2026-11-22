@@ -113,6 +113,34 @@ class PageSections(_Base):
         self.assertTrue(copy.is_file())
         self.assertEqual(r.stdout.splitlines()[-2:], [str(copy), copy.resolve().as_uri()])
 
+    def _git_repo_meta(self, **extra):
+        repo = self.root / 'src'
+        subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+        meta = json.loads((self.pkg / 'meta.json').read_text())
+        meta.update(original_repo_root=str(repo), created='20261122-014000', **extra)
+        (self.pkg / 'meta.json').write_text(json.dumps(meta))
+        return repo
+
+    def test_page_and_findings_are_kept_in_the_repo_and_ignored_by_git(self):
+        repo = self._git_repo_meta(github={'pr': 12})
+        before = subprocess.run(['git', 'status', '--porcelain', '-uall'], cwd=repo, capture_output=True, text=True).stdout
+        self.render(dict(title='Payments'))
+        kept = repo / '.review-kit' / 'reviews' / 'pr-12-20261122-014000'
+        self.assertTrue((kept / 'review.html').is_file())
+        self.assertTrue((kept / 'findings.json').is_file())
+        after = subprocess.run(['git', 'status', '--porcelain', '-uall'], cwd=repo, capture_output=True, text=True).stdout
+        self.assertEqual(before, after)
+
+    def test_branch_runs_are_named_after_the_branch_and_temp_keeps_them_out(self):
+        repo = self._git_repo_meta(description='branch feature/coupons vs abc + uncommitted')
+        self.render(dict(title='Payments'))
+        self.assertTrue((repo / '.review-kit/reviews/feature-coupons-20261122-014000/review.html').is_file())
+        meta = json.loads((self.pkg / 'meta.json').read_text())
+        meta.update(config={'html_dir': 'temp'}, created='20261122-020000')
+        (self.pkg / 'meta.json').write_text(json.dumps(meta))
+        self.render(dict(title='Payments'))
+        self.assertFalse((repo / '.review-kit/reviews/feature-coupons-20261122-020000').exists())
+
     def test_explain_mode_has_no_verdict(self):
         (self.pkg / 'findings.json').write_text(json.dumps(dict(
             mode='explain', execution_status='completed', verdict='ship', summary='Explained pay.py', findings=[])))

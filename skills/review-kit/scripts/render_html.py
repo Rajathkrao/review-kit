@@ -936,16 +936,61 @@ def render(pkg: Path):
     out.write_text(page)
     for w in depth_warnings(findings, details, steps, src):
         print(f"thin: {w}", file=sys.stderr)
-    return out, meta.get("config") if isinstance(meta.get("config"), dict) else {}
+    return out, meta
 
 
-def deliver(out: Path, cfg, copy_to=None, open_it=False):
-    """Optionally copy the page somewhere the user can open it, and open it in a browser."""
+def run_name(meta, pkg):
+    """Folder name for a kept review: pr-12-20261122-014000, feature-x-20261122-014000, ..."""
+    gh = meta.get("github") if isinstance(meta.get("github"), dict) else {}
+    desc = str(meta.get("description", ""))
+    if gh.get("pr"):
+        label = f"pr-{gh['pr']}"
+    elif desc.startswith("branch "):
+        label = desc.split()[1]
+    elif meta.get("target") and meta["target"] != "(current branch)":
+        label = str(meta["target"])
+    else:
+        return pkg.name
+    label = re.sub(r"[^A-Za-z0-9._-]+", "-", label).strip("-.")[:60] or "review"
+    return f"{label}-{meta.get('created') or pkg.name}"
+
+
+def repo_reviews_dir(meta):
+    """<repo>/.review-kit/reviews, ignored by git through its own .gitignore (no tracked file changes)."""
+    root = meta.get("original_repo_root") or meta.get("repo_root")
+    if not root or not (Path(root) / ".git").exists():
+        return None
+    reviews = Path(root) / ".review-kit" / "reviews"
+    reviews.mkdir(parents=True, exist_ok=True)
+    ignore = reviews / ".gitignore"
+    if not ignore.exists():
+        ignore.write_text("# review-kit output: kept locally, never committed\n*\n")
+    return reviews
+
+
+def deliver(out: Path, cfg, copy_to=None, open_it=False, meta=None):
+    """Keep the page (and findings.json) where the user can find it, print its path, optionally open it.
+
+    Default: <repo>/.review-kit/reviews/<run>/. `--copy-to DIR` or "html_dir" puts it in DIR instead;
+    "html_dir": "temp" leaves it only in the scratch folder."""
+    meta = meta or {}
     copy_to = copy_to or cfg.get("html_dir")
-    if copy_to:
+    if copy_to and str(copy_to) != "temp":
         target = Path(str(copy_to)).expanduser()
         target.mkdir(parents=True, exist_ok=True)
         out = Path(shutil.copy2(out, target / f"{out.parent.name}.html"))
+    elif not copy_to:
+        try:
+            reviews = repo_reviews_dir(meta)
+            if reviews:
+                dest = reviews / run_name(meta, out.parent)
+                dest.mkdir(parents=True, exist_ok=True)
+                findings = out.parent / "findings.json"
+                if findings.is_file():
+                    shutil.copy2(findings, dest / "findings.json")
+                out = Path(shutil.copy2(out, dest / "review.html"))
+        except OSError as exc:
+            print(f"could not keep a copy in the repo ({exc}); the page stays in the scratch folder", file=sys.stderr)
     print(out)
     print(out.resolve().as_uri())
     if open_it or cfg.get("open") is True:
@@ -962,7 +1007,8 @@ if __name__ == "__main__":
         sys.exit("usage: render_html.py PKG [--open] [--copy-to DIR]")
     copy_to = args[args.index("--copy-to") + 1] if "--copy-to" in args[:-1] else None
     try:
-        page, config = render(Path(args[0]))
-        deliver(page, config, copy_to, "--open" in args)
+        page, meta = render(Path(args[0]))
+        config = meta.get("config") if isinstance(meta.get("config"), dict) else {}
+        deliver(page, config, copy_to, "--open" in args, meta)
     except (ValueError, OSError, TypeError, KeyError) as exc:
         sys.exit(f"HTML generation failed: {exc}")
