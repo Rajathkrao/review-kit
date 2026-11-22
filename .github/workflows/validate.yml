@@ -10,6 +10,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Plugin changes bump the version (installed copies only update on a new version)
+        if: github.event_name == 'pull_request'
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          if git diff --name-only "$BASE"...HEAD | grep -qE '^(skills|commands|agents)/|^\.claude-plugin/'; then
+            old=$(git show "$BASE:.claude-plugin/plugin.json" | python -c "import json,sys; print(json.load(sys.stdin)['version'])")
+            new=$(python -c "import json; print(json.load(open('.claude-plugin/plugin.json'))['version'])")
+            if [ "$old" = "$new" ]; then
+              echo "::error::Plugin files changed but version is still $old. Bump it in .claude-plugin/plugin.json and add a CHANGELOG.md entry."
+              exit 1
+            fi
+            grep -q "^## $new " CHANGELOG.md || { echo "::error::CHANGELOG.md has no entry for $new"; exit 1; }
+          fi
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - name: JSON manifests parse

@@ -21,6 +21,9 @@ review before merging. The workflow does not install branch protection or bypass
 - **Scripts stay dependency-free.** Python 3.9+ standard library and bash only.
 - **Reviews stay read-only.** Nothing in a review may edit the user's repo, move HEAD or post to
   GitHub without the user's explicit flag and confirmation.
+- **Bump the version.** Any change under `skills/`, `commands/`, `agents/` or `.claude-plugin/`
+  raises `version` in `.claude-plugin/plugin.json` and adds a `CHANGELOG.md` entry. Installed
+  copies only update on a new version, and CI fails the PR without it.
 - One focused change per PR.
 
 ## Local test

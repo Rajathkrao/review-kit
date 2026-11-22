@@ -9,7 +9,7 @@ the mode never produces it (e.g. no "Existing PR comments" outside pr mode).
 **Verdict: Don't ship yet** — <one terse line: the strongest reason, or "no material issues found">
 **What this change does:** <two sentences in plain words, for someone new to this code>
 **Checked against:** <purpose source, e.g. docs/adr/0007-export-limits.md, or "inferred from commits"> · <n> requirements: ✅ <met> ❌ <missing> ⚠️ <cannot verify>
-**Execution:** completed | partial | failed | nothing-to-review · <reviewed commit short SHA> · <seconds or "lenses: …">
+**Execution:** completed | partial | failed | nothing-to-review · <reviewed commit short SHA> · <seconds or "lenses: …"> · rk v<version from the context block>
 **Verification:** <`pytest tests/test_x.py` → 14 passed, 1 failed> | <repro: `python repro/f2.py` → sum 999> | tests not run (<why>)
 
 ### Findings
