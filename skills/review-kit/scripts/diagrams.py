@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 
 NODE_W, NODE_H, GAP_X, GAP_Y, PAD = 188, 58, 56, 72, 16
+MAX_ROW = 4
 SEV_VAR = {"critical": "var(--crit)", "important": "var(--imp)", "minor": "var(--min)"}
 
 
@@ -142,6 +143,17 @@ def architecture(spec, findings_by_id=None):
     used = sorted(set(layer.values()))
     layer = {n: used.index(v) for n, v in layer.items()}
     rows = _order(ids, [(a, b) for a, b, _ in edges], layer)
+    if any(len(r) > MAX_ROW for r in rows.values()):
+        # A row wider than MAX_ROW boxes shrinks every label to unreadable: wrap it onto more rows.
+        wrapped, k = {}, 0
+        for key in sorted(rows):
+            for start in range(0, len(rows[key]), MAX_ROW):
+                for n in rows[key][start:start + MAX_ROW]:
+                    layer[n] = k
+                wrapped[k] = rows[key][start:start + MAX_ROW]
+                k += 1
+        rows = wrapped
+        back = {(a, b) for a, b in back if layer[b] <= layer[a]} | {(a, b) for a, b, _ in edges if layer[b] < layer[a]}
     widest = max(len(r) for r in rows.values())
     width = PAD * 2 + widest * NODE_W + (widest - 1) * GAP_X
     height = PAD * 2 + len(rows) * NODE_H + (len(rows) - 1) * GAP_Y + 8
@@ -322,13 +334,13 @@ def sequence(spec, findings_by_id=None):
 
 
 def _module_name(root, path):
-    rel = Path(path).with_suffix("")
-    parts = list(rel.parts)
+    """Dotted module name. In a src/ layout (also nested, as in a monorepo: pkg/src/pkg/x.py) the
+    name starts after the last src folder, which is how the code imports it."""
+    parts = list(Path(str(path).replace("\\", "/")).with_suffix("").parts)
     if parts and parts[-1] == "__init__":
         parts = parts[:-1]
-    # Drop a leading src/ layout folder.
-    if parts and parts[0] == "src" and (Path(root) / "src").is_dir():
-        parts = parts[1:]
+    if "src" in parts[:-1]:
+        parts = parts[len(parts) - 1 - parts[::-1].index("src") + 1:]
     return ".".join(parts)
 
 
@@ -367,6 +379,23 @@ def import_graph(root, changed_files, max_files=3000):
         if len(files) > max_files:
             return {}
     mods = {_module_name(root, f): f for f in files}
+    # Imports that name a module by a shorter path than its folder (a package rooted in a subfolder
+    # without src/) resolve by a unique dotted suffix.
+    suffix = {}
+    for name in mods:
+        bits = name.split(".")
+        for i in range(1, len(bits)):
+            suffix.setdefault(".".join(bits[i:]), set()).add(name)
+
+    def resolve(imp):
+        while imp:
+            if imp in mods:
+                return imp
+            if len(suffix.get(imp, ())) == 1:
+                return next(iter(suffix[imp]))
+            imp = imp.rsplit(".", 1)[0] if "." in imp else ""
+        return ""
+
     graph = {}
     for f in files:
         try:
@@ -377,10 +406,9 @@ def import_graph(root, changed_files, max_files=3000):
         # A relative import inside a package resolves against the module's own package.
         targets = set()
         for imp in _imports(tree, m if not f.endswith("__init__.py") else m + ".__init__"):
-            while imp and imp not in mods:
-                imp = imp.rsplit(".", 1)[0] if "." in imp else ""
-            if imp and imp != m:
-                targets.add(imp)
+            hit = resolve(imp)
+            if hit and hit != m:
+                targets.add(hit)
         graph[m] = targets
     changed_mods = {_module_name(root, p) for p in changed if _module_name(root, p) in mods}
     keep = set(changed_mods)
@@ -389,16 +417,140 @@ def import_graph(root, changed_files, max_files=3000):
         keep.update(k for k, v in graph.items() if m in v)
     if len(keep) > 24:  # too big to draw usefully: keep changed modules and their direct imports
         keep = set(changed_mods) | {t for m in changed_mods for t in graph.get(m, ())}
-    nodes = [{"id": m, "label": m.rsplit(".", 1)[-1] if m.count(".") else m, "file": mods[m],
-              "kind": "test" if "test" in mods[m].lower() else "logic", "changed": m in changed_mods}
+    nodes = [{"id": m, "label": (m.rsplit(".", 1)[-1] if m.count(".") else m)
+              + ("/__init__" if mods[m].replace("\\", "/").endswith("/__init__.py") else ""), "file": mods[m].replace("\\", "/"),
+              "kind": "test" if _is_test(mods[m]) else "logic", "changed": m in changed_mods}
              for m in sorted(keep)]
     edges = [{"from": a, "to": b} for a in sorted(keep) for b in sorted(graph.get(a, ())) if b in keep]
     return {"title": "Python modules touched by this change", "layering": "longest", "nodes": nodes, "edges": edges}
 
 
+def _is_test(path):
+    p = str(path).replace("\\", "/").lower()
+    name = p.rsplit("/", 1)[-1]
+    return name.startswith("test_") or name.endswith("_test.py") or name == "conftest.py" or "/tests/" in f"/{p}"
+
+
+MOD_W, MOD_H, MOD_GAP, MOD_COL, MOD_MAX = 232, 44, 12, 120, 12
+
+
+def module_map(spec):
+    """The import graph as three columns that stay readable at any size: modules that use the
+    change (importers and tests) on the left, the changed modules in the middle, and what they
+    build on (their imports) on the right. An arrow means "imports"."""
+    nodes = [n for n in (spec or {}).get("nodes", []) if isinstance(n, dict) and n.get("id")]
+    if len(nodes) < 2:
+        return ""
+    byid = {n["id"]: n for n in nodes}
+    edges = [(x["from"], x["to"]) for x in spec.get("edges", []) if x.get("from") in byid and x.get("to") in byid]
+    changed = {n["id"] for n in nodes if n.get("changed")}
+    mid = [n["id"] for n in nodes if n["id"] in changed and n.get("kind") != "test"]
+    left, right = [], []
+    for n in nodes:
+        i = n["id"]
+        if i in mid:
+            continue
+        uses_change = any(a == i and b in changed for a, b in edges)
+        (left if n.get("kind") == "test" or i in changed or uses_change else right).append(i)
+    if not mid:  # only tests changed: show them in the middle
+        mid, left = left, []
+    # Middle: importers above what they import (longest path), so arrows inside it point down.
+    succ = {i: [b for a, b in edges if a == i and b in mid] for i in mid}
+    depth = {}
+
+    def dp(i, seen=()):
+        if i not in depth:
+            depth[i] = 0 if i in seen else 1 + max([dp(b, seen + (i,)) for b in succ[i] if b not in seen] + [-1])
+        return depth[i]
+    mid.sort(key=lambda i: (-dp(i), i))
+    pos = {i: k for k, i in enumerate(mid)}
+
+    def bary(i):
+        ks = [pos[b] for a, b in edges if a == i and b in pos] + [pos[a] for a, b in edges if b == i and a in pos]
+        return (sum(ks) / len(ks) if ks else 1e9, i)
+    left.sort(key=bary)
+    right.sort(key=bary)
+    more = {}
+    for name, col in (("left", left), ("right", right)):
+        if len(col) > MOD_MAX:
+            more[name] = len(col) - (MOD_MAX - 1)
+            del col[MOD_MAX - 1:]
+    cols = [c for c in (left, mid, right)]
+    titles = ["Uses the change", "Changed", "Builds on"]
+    xs, x = [], PAD
+    for c in cols:
+        xs.append(x)
+        if c or c is mid:
+            x += MOD_W + MOD_COL
+    width = x - MOD_COL + PAD
+    top = PAD + 26
+    rows = max(len(c) + (1 if (c is left and "left" in more) or (c is right and "right" in more) else 0) for c in cols)
+    height = top + rows * (MOD_H + MOD_GAP) - MOD_GAP + PAD + 4
+    # Centre shorter columns against the tallest one.
+    xy = {}
+    for c, cx in zip(cols, xs):
+        extra = 1 if (c is left and "left" in more) or (c is right and "right" in more) else 0
+        y0 = top + (rows - len(c) - extra) * (MOD_H + MOD_GAP) / 2
+        for k, i in enumerate(c):
+            xy[i] = (cx, y0 + k * (MOD_H + MOD_GAP))
+    out = [f'<svg class="dg dg-mod" style="max-width:{width}px;min-width:{min(width, 640)}px" viewBox="0 0 {width} {height:.0f}" role="img" aria-label="Python modules touched by this change">',
+           '<defs><marker id="mh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">'
+           '<path d="M0,0 L10,5 L0,10 z" class="dg-head"/></marker></defs>']
+    for c, cx, t in zip(cols, xs, titles):
+        if c:
+            out.append(f'<text x="{cx + 2}" y="{PAD + 10}" class="dg-colh">{t.upper()}</text>')
+    # Edges first, so boxes sit on top of them.
+    arcs = 0
+    for a, b in edges:
+        if a not in xy or b not in xy:
+            continue
+        (ax, ay), (bx, by) = xy[a], xy[b]
+        hot = a in changed or b in changed
+        cls = "dg-edge dg-modedge" + (" dg-hot" if hot else "")
+        if ax == bx:  # inside one column: arc out to the right
+            arcs += 1
+            sx, sy, ty = ax + MOD_W, ay + MOD_H / 2 + 6, by + MOD_H / 2 - 6
+            bend = sx + 16 + min(40, abs(ty - sy) / 8) + 6 * (arcs % 3)
+            d = f"M{sx:.0f},{sy:.0f} C{bend:.0f},{sy:.0f} {bend:.0f},{ty:.0f} {sx + 3:.0f},{ty:.0f}"
+        elif ax < bx:
+            sx, sy, tx, ty = ax + MOD_W, ay + MOD_H / 2, bx - 3, by + MOD_H / 2
+            m = (sx + tx) / 2
+            d = f"M{sx:.0f},{sy:.0f} C{m:.0f},{sy:.0f} {m:.0f},{ty:.0f} {tx:.0f},{ty:.0f}"
+        else:
+            sx, sy, tx, ty = ax, ay + MOD_H / 2, bx + MOD_W + 3, by + MOD_H / 2
+            m = (sx + tx) / 2
+            d = f"M{sx:.0f},{sy:.0f} C{m:.0f},{sy:.0f} {m:.0f},{ty:.0f} {tx:.0f},{ty:.0f}"
+        out.append(f'<path d="{d}" class="{cls}" marker-end="url(#mh)"><title>{e(a)} imports {e(b)}</title></path>')
+    for i, (x, y) in xy.items():
+        n = byid[i]
+        cls = "dg-node" + (" dg-changed" if i in changed else "") + (" dg-test" if n.get("kind") == "test" else "")
+        pkg = i.rsplit(".", 1)[0] if "." in i else ""
+        out.append(f'<g><title>{e(n.get("file") or i)}</title><rect x="{x:.0f}" y="{y:.0f}" width="{MOD_W}" height="{MOD_H}" rx="7" class="{cls}"/>')
+        out.append(f'<text x="{x + 12:.0f}" y="{y + (19 if pkg else 27):.0f}" class="dg-text dg-modname">{e(_clip(n.get("label") or i, 30))}</text>')
+        if pkg:
+            out.append(f'<text x="{x + 12:.0f}" y="{y + 34:.0f}" class="dg-sub">{e(_clip_left(pkg, 34))}</text>')
+        out.append('</g>')
+    for name, col, cx in (("left", left, xs[0]), ("right", right, xs[2])):
+        if name in more:
+            y = xy[col[-1]][1] + MOD_H + MOD_GAP if col else top
+            out.append(f'<text x="{cx + 12}" y="{y + 26:.0f}" class="dg-sub">+ {more[name]} more</text>')
+    out.append('</svg>')
+    return "".join(out)
+
+
+def _clip_left(text, n):
+    text = str(text)
+    return text if len(text) <= n else "…" + text[-(n - 1):]
+
+
 CSS = """
-.dg-wrap{margin:16px 0 8px;background:var(--sheet);border:1px solid var(--rule);border-radius:8px;padding:10px;overflow-x:auto}
-.dg-wrap figcaption{font-size:13px;color:var(--soft);margin:6px 4px 0}
+.dg-wrap{margin:14px 0 8px;background:var(--sheet);border:1px solid var(--rule);border-radius:14px;padding:18px 16px 14px;overflow-x:auto;box-shadow:var(--shadow,none)}
+.dg-wrap figcaption{font-size:13px;color:var(--soft);margin:10px 6px 0;max-width:90ch}
+.dg-colh{fill:var(--faint,var(--soft));font-size:10.5px;font-weight:600;letter-spacing:.08em}
+.dg-modname{font-size:13px}
+.dg-modedge{stroke:var(--rule);stroke-width:1.4}
+.dg-hot{stroke:var(--soft)}
+.dg-mod .dg-test{stroke-dasharray:4 3}
 svg.dg{display:block;margin:0 auto;width:100%;height:auto;max-height:78vh;font-family:var(--sans)}
 .dg-node{fill:var(--paper);stroke:var(--rule);stroke-width:1.5}
 .dg-changed{fill:var(--accent-wash);stroke:var(--accent);stroke-width:2.2}

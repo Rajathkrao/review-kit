@@ -62,6 +62,31 @@ class DiagramUnits(unittest.TestCase):
             self.assertIn({'from': 'app.api', 'to': 'app.service'}, g['edges'])
             self.assertTrue(next(n for n in g['nodes'] if n['id'] == 'app.service')['changed'])
 
+    def test_import_graph_nested_src_layout_and_three_column_map(self):
+        # A monorepo package (evals/src/evals/...) is imported as evals.*, not evals.src.evals.*.
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            pkg = root / 'evals/src/evals/metrics'
+            pkg.mkdir(parents=True)
+            (root / 'evals/tests').mkdir()
+            (pkg / 'base.py').write_text('X = 1\n')
+            (pkg / 'shared.py').write_text('Y = 2\n')
+            (pkg / 'topk.py').write_text('from evals.metrics.base import X\nfrom evals.metrics.shared import Y\n')
+            (root / 'evals/tests/test_topk.py').write_text('from evals.metrics.topk import X\n')
+            g = diagrams.import_graph(root, ['evals/src/evals/metrics/topk.py', 'evals/src/evals/metrics/shared.py',
+                                             'evals/tests/test_topk.py'])
+            self.assertIn({'from': 'evals.metrics.topk', 'to': 'evals.metrics.base'}, g['edges'])
+            self.assertIn({'from': 'evals.metrics.topk', 'to': 'evals.metrics.shared'}, g['edges'])
+            self.assertIn({'from': 'evals.tests.test_topk', 'to': 'evals.metrics.topk'}, g['edges'])
+            svg = diagrams.module_map(g)
+            for col in ('USES THE CHANGE', 'CHANGED', 'BUILDS ON'):
+                self.assertIn(col, svg)
+            self.assertEqual(svg.count('marker-end="url(#mh)"'), 3)
+            # Boxes keep their real size: the drawing is three columns wide, never one long row.
+            width = int(svg.split('viewBox="0 0 ')[1].split()[0])
+            self.assertLess(width, 1000)
+
 
 class PageSections(_Base):
     def test_big_picture_worth_a_look_and_reading_order(self):
