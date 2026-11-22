@@ -186,7 +186,8 @@ The renderer adds, from `findings.json` alone: a "Problems at a glance" table (u
 `recommendation` first sentence, so keep that a concrete one-liner), severity filters, and "Copy
 fix prompt" buttons built from title, location, summary, scenario, fix and test explanation.
 
-The page is written to `$PKG/review.html` (the scratch folder). The renderer validates
+The page is rendered to `$PKG/review.html` (the scratch folder), then kept with `findings.json`
+in `<repo>/.review-kit/reviews/<run>/`; that folder ignores itself in git, so the repo stays clean. The renderer validates
 `findings.json` first and refuses to render invalid data. It prints `thin: ...` lines for problems
 whose explanation is missing or too short: fix those entries in `explainer.json` and render once
 more. Don't loop beyond that. The renderer prints the path and a `file://` link: give the user
@@ -195,8 +196,8 @@ both.
 Where the page goes and whether it opens (never ask; follow the flags and config):
 - `--open` on the command line, or `"open": true` in config: add `--open` and the page opens in
   the default browser.
-- `--html-out <dir>`, or `"html_dir": "<dir>"` in config: add `--copy-to <dir>` and a copy is
-  written there (use this when the app can only open files in the workspace).
-- Otherwise it stays in the scratch folder. If this session can only open files in certain
-  folders (cloud or desktop app) and the scratch folder is not one of them, copy the page to a
-  folder it can open, outside the repository, and give that path.
+- `--html-out <dir>`, or `"html_dir": "<dir>"` in config: add `--copy-to <dir>` and the page is
+  written there instead of the repo.
+- Otherwise the renderer keeps it in `<repo>/.review-kit/reviews/<run>/` and prints that path
+  (`"html_dir": "temp"` leaves it in the scratch folder only). That path is inside the workspace,
+  so cloud and desktop apps can open it.

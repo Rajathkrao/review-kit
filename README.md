@@ -57,15 +57,17 @@ Bug finding is `review`, `quick`, `deep` and `pr`. Cleanup is `refine`. Understa
 
 ## Where the results go
 
-- **The report** is printed in the chat. Nothing is written in your repo.
-- **The HTML walkthrough** (deep, full, pr, arch, explain, or `--html`) is saved as `review.html`
-  in a run folder under your system temp directory, such as `/tmp/review-kit/<repo>-<time>-<id>/`
-  on Linux or `$TMPDIR/review-kit/…` on macOS. The path is printed at the end of the report, and
-  `--open` opens it. Run folders older than 7 days are deleted, so set `html_dir` (see Settings)
-  or pass `--html-out <dir>` to keep copies.
-- **`findings.json`** sits in the same run folder, written only for the walkthrough or `--post`.
-- **Learnings** ("remember: …") go to `<repo>/.review-kit/learnings.md`, the only file it writes
-  in your repo, and only when you ask.
+- **The report** is printed in the chat.
+- **The HTML walkthrough** (deep, full, pr, arch, explain, or `--html`) and its `findings.json`
+  are kept in your project at `.review-kit/reviews/<run>/`, for example
+  `.review-kit/reviews/pr-12-20261122-014000/review.html` or
+  `.review-kit/reviews/feature-coupons-20261122-014000/review.html`. The path is printed at the
+  end of the report, and `--open` opens it. That folder has its own `.gitignore`, so git never
+  sees it and your `.gitignore` is not touched. Delete old runs whenever you like.
+- **Working files** (the numbered diff, a pinned copy of the reviewed commit, probes) live in a
+  scratch folder under your system temp directory and are deleted after 7 days.
+- **Learnings** ("remember: …") go to `<repo>/.review-kit/learnings.md`, only when you ask.
+  Commit that file if you want your team to share them.
 - **PR comments** are posted only with `/rk:pr … --post`, after you approve them.
 
 ## Updating and checking your version
@@ -76,7 +78,7 @@ agents or scripts bumps it (CI checks this), and `CHANGELOG.md` says what each v
 
 To get the latest: `/plugin marketplace update review-kit-marketplace`, then start a new session.
 To check what you have: open `/plugin`, go to Installed, and look at the version next to `rk`.
-Every report also shows it on its **Execution** line (`rk v1.3.0`), and the HTML page shows it in
+Every report also shows it on its **Execution** line (`rk v1.4.0`), and the HTML page shows it in
 its footer. If that number is older than the top entry of `CHANGELOG.md`, update.
 
 **Requirements:** `git` and `python3` (the helper scripts use only the standard library and target
@@ -116,7 +118,7 @@ a PR number or URL, or a path.
   risk signals, suggested depth, purpose docs, project rules, learnings, ruff hints, call sites of
   changed Python functions, and the numbered diff (inline up to about 1,500 lines; larger diffs
   are read from a scratch folder, riskiest areas first, and the report lists what was skipped).
-  The command writes nothing in your repo.
+  The context command writes nothing in your repo.
 - **No questions.** It never stops to ask which mode or what the change is for. It infers the
   purpose and says what it used.
 - **Parallel where it pays.** Quick mode is a single inline pass. Deep mode runs its lenses and its
@@ -214,13 +216,14 @@ for Python, a module map drawn from the imports so you see the blast radius. The
 reading order (foundations first), a review-effort score, and your real code in execution
 order, with each problem pinned to its line, the sequence of events that triggers it, root cause,
 impact, a fix as a diff and a test that fails today. It is self-contained and works offline. It is
-written to the scratch folder in your system temp directory and its path is printed.
+kept in `.review-kit/reviews/<run>/` in your project and its path is printed.
 
 **Settings:** `.review-kit/config.json` in the repo or `~/.review-kit/config.json`:
-`{"html": "always" | "never", "open": true, "html_dir": "~/reviews"}`. Leave `html` out for the
+`{"html": "always" | "never", "open": true, "html_dir": "~/reviews" | "temp"}`. Leave `html` out for the
 default (on in the modes above, or with `--html`). `open`
 launches the page in your browser as soon as it is written (`--open` does it once); `html_dir`
-keeps a copy of every page in a folder of your choice (`--html-out <dir>` for one run).
+puts every page in a folder of your choice instead of `.review-kit/reviews/` (`--html-out <dir>`
+for one run), and `"temp"` keeps pages only in the scratch folder.
 
 ## Tested
 
