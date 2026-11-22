@@ -75,7 +75,7 @@ class PageSections(_Base):
             sequences=[{'title': 'Retry', 'actors': ['A', 'B'], 'messages': [{'from': 'A', 'to': 'B', 'label': 'send'}]}],
             changed_files=[{'path': 'pay.py', 'role': 'Read first', 'order': 1}]))
         for text in ('The big picture', '<svg class="dg"', 'Retry', 'Worth a look', 'are rows aware?',
-                     'Dismissed', 'guard at pay.py:1', 'Suggested reading order', 'Review effort'):
+                     'Dismissed', 'guard at pay.py:1', 'Files in this change', 'Numbered in the order to read them', 'to review'):
             self.assertIn(text, html)
 
     def test_problem_files_from_parallel_writers_are_merged(self):
@@ -99,7 +99,7 @@ class PageSections(_Base):
         html = self.render(dict(title='Payments', problems={'F1': dict(
             summary='Deep summary', scenario=['First call', 'Retry'],
             fix=dict(explanation='Send an idempotency key.'), test=dict(code='assert calls == 1', explanation='Fails today.'))}))
-        for text in ('Problems at a glance', 'data-filter="critical"', 'Copy all fix prompts', 'Copy fix prompt',
+        for text in ('id="verdict"', 'ship yet', '<table class="glance">', 'Copy fix prompt',
                      'Fix this code review finding.', 'Where: pay.py:1-4', 'How it breaks: 1) First call 2) Retry',
                      '<details class="fold">', 'id="fold-all"'):
             self.assertIn(text, html)
@@ -145,8 +145,10 @@ class PageSections(_Base):
         (self.pkg / 'findings.json').write_text(json.dumps(dict(
             mode='explain', execution_status='completed', verdict='ship', summary='Explained pay.py', findings=[])))
         html = self.render(dict(title='Payments'))
-        self.assertIn('Walkthrough only, not reviewed for bugs', html)
+        self.assertIn('Explainer only, not checked for bugs', html)
         self.assertNotIn('No issues found', html)
+        self.assertNotIn('id="verdict"', html)           # no verdict card, no amber banner
+        self.assertEqual(html.count('Explained pay.py'), 1)  # the summary is not repeated under the title
 
 
 del _Base

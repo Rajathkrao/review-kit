@@ -205,18 +205,23 @@ execution and verification evidence, findings (file:line, trigger, impact, fix, 
 spec compliance, PR comment verdicts, dismissed candidates with their disproof, and what was not
 checked. Findings are numbered, so "fix 1 and 3" works.
 
-The HTML walkthrough (on by default in deep, full, pr, arch and explain) opens with **problems at
-a glance**: every finding in one table with its one-line fix, severity filters, and a "Copy all fix
-prompts" button whose text you can paste straight into Claude Code (each problem has its own
-"Copy fix prompt" too). Problems fold and unfold, `j` / `k` jump between them, the side menu
-follows your scroll, and there is a light/dark switch. Then comes **the big
-picture**: an architecture diagram of the parts the change touches (changed parts highlighted,
-problem badges linked to the finding), sequence diagrams of the main flow or the failing race, and,
-for Python, a module map drawn from the imports so you see the blast radius. Then a suggested
-reading order (foundations first), a review-effort score, and your real code in execution
-order, with each problem pinned to its line, the sequence of events that triggers it, root cause,
-impact, a fix as a diff and a test that fails today. It is self-contained and works offline. It is
-kept in `.review-kit/reviews/<run>/` in your project and its path is printed.
+The HTML walkthrough (on by default in deep, full, pr, arch and explain) opens with a header that
+links the PR and the reviewed commit, a one-line description, and one line of facts (files and
+lines changed, an estimated review time, how findings were checked). Then the **verdict card**:
+the verdict, why, and every finding in one table with its one-line fix, severity filters, and a
+"Copy fix prompt for all" button whose text you can paste straight into Claude Code (each problem
+has its own "Copy fix prompt" too). Next, **what changed and why** with before and after side by
+side, then **the big picture**: an architecture diagram of the parts the change touches (changed
+parts highlighted, problem badges linked to the finding), sequence diagrams of the main flow or the
+failing race, and, for Python, a module map drawn from the imports so you see the blast radius.
+Then your real code in execution order, with each problem pinned to its line, the sequence of
+events that triggers it, root cause, impact, a fix as a diff and a test that fails today, and a
+files table in reading order with each file's role and size. Problems fold and unfold, `j` / `k`
+jump between them, the side menu follows your scroll, and there is a light/dark switch. Explain
+mode drops the verdict card and says once, in the facts line, that the code was not checked for
+bugs. The page is self-contained and works offline. It is kept in `.review-kit/reviews/<run>/` in
+your project and its path is printed. To preview the layout without a model run:
+`python3 evals/build_walkthrough_demo.py /tmp/demo` then render `/tmp/demo/review-pkg`.
 
 **Settings:** `.review-kit/config.json` in the repo or `~/.review-kit/config.json`:
 `{"html": "always" | "never", "open": true, "html_dir": "~/reviews" | "temp"}`. Leave `html` out for the
