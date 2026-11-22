@@ -3,6 +3,20 @@
 Claude Code picks up a new release only when `version` in `.claude-plugin/plugin.json` goes up.
 Compare the top entry here with the `rk v…` on a report's Execution line, or with `/plugin` → Installed.
 
+## 1.7.0 · 2026-11-22
+- HTML report redesign: a slim sticky top bar (repo, branch, commit, verdict, theme), a modern sans
+  type scale, stat tiles for size, effort, problems and tests, a verdict card with severity filters,
+  numbered sections, and each problem as its own card with a severity badge. Tuned light and dark
+  themes; works at phone width without sideways scrolling.
+- The contents rail is wider; problem and step titles are clamped to two lines with the full title
+  on hover, severity dots, and counts next to each section.
+- "Python modules touched" is now a three-column map (uses the change, changed, builds on) at full
+  size instead of one long row of shrunken boxes. Imports now resolve in nested `src/` layouts
+  (`pkg/src/pkg/...` in a monorepo) and by unique dotted suffix, so the arrows appear.
+- Architecture diagrams wrap any row wider than four boxes onto a new row.
+- `evals/build_walkthrough_large.py` builds a 12-file, 7-finding package to check the page by eye.
+  Rendering stays well under a second.
+
 ## 1.6.0 · 2026-11-22
 - Clearer PR comments from `/rk:pr --post`: verdict heading with severity counts, a one-line-per-issue
   table, and folded sections for out-of-diff issues, minor issues, agreed comments and an AI fix prompt.

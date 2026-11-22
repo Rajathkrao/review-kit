@@ -109,7 +109,7 @@ before reading code:
 - `sequences`: 1–3 flows, one per entry point or per problem worth seeing in time order (a race, a
   retry, a partial failure). 3–6 actors, 4–12 messages, real values in labels, `finding_id` on the
   message where it goes wrong. `kind`: `call` (default), `return`, `async` (dashed) or `note`.
-- For Python changes the renderer also draws the module import map by itself.
+- For Python changes the renderer also draws the module import map by itself (three columns: code that uses the change, the changed modules, what they import).
 
 ### Reading order (`changed_files[].order`)
 

@@ -221,7 +221,7 @@ jump between them, the side menu follows your scroll, and there is a light/dark 
 mode drops the verdict card and says once, in the facts line, that the code was not checked for
 bugs. The page is self-contained and works offline. It is kept in `.review-kit/reviews/<run>/` in
 your project and its path is printed. To preview the layout without a model run:
-`python3 evals/build_walkthrough_demo.py /tmp/demo` then render `/tmp/demo/review-pkg`.
+`python3 evals/build_walkthrough_demo.py /tmp/demo` then render `/tmp/demo/review-pkg`; `evals/build_walkthrough_large.py` builds a bigger 12-file, 7-finding package (`large-pkg`).
 
 **Settings:** `.review-kit/config.json` in the repo or `~/.review-kit/config.json`:
 `{"html": "always" | "never", "open": true, "html_dir": "~/reviews" | "temp"}`. Leave `html` out for the
