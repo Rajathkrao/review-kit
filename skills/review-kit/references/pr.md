@@ -53,8 +53,9 @@ Put the table in the report's "Existing PR comments" section, and add the endors
    ```bash
    python3 "${CLAUDE_SKILL_DIR}/scripts/post_review.py" "$PKG"
    ```
-   It maps each finding to a line in the PR diff, puts findings outside the diff into the summary
-   body, and writes `$PKG/review-payload.json` plus a preview at `$PKG/review-preview.md`.
+   It maps each critical/important finding to a line in the PR diff, puts findings outside the
+   diff and all minor findings into folded sections of the summary (format in
+   `output-format.md`), and writes `$PKG/review-payload.json` plus a preview at `$PKG/review-preview.md`.
 3. Show the preview. Ask: Post as shown / Edit first / Don't post.
 4. On "Post": `python3 "${CLAUDE_SKILL_DIR}/scripts/post_review.py" "$PKG" --submit`. This
    creates one review with event `COMMENT` and inline comments. Report the review URL.

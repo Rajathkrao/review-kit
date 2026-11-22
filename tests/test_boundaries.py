@@ -141,5 +141,56 @@ Path(os.environ['MERGE_ARGS']).write_text(json.dumps(sys.argv[1:]))
                     self.assertEqual(args[-2:], ['--match-head-commit', self.base])
 
 
+class CommentFormatTests(TemporaryCase):
+    DIFF = ('diff --git a/code.py b/code.py\n--- a/code.py\n+++ b/code.py\n'
+            '@@ -1,1 +1,4 @@\n value = 1\n+a = 1\n+b = 2\n+c = 3\n')
+
+    def build(self, findings, verdict):
+        self.package(dict(review(findings), verdict=verdict))
+        (self.pkg / 'diff.patch').write_text(self.DIFF)
+        payload, _ = post_review.build(self.pkg)
+        return payload
+
+    def test_summary_ranks_by_severity_and_folds_minors(self):
+        minor = dict(finding(), id='F1', title='Nit name', severity='minor', line_start=2, line_end=2)
+        crit = dict(finding(), id='F2', title='Data loss', severity='critical', line_start=3, line_end=3)
+        p = self.build([minor, crit], 'dont-ship')
+        body = p['body']
+        self.assertTrue(body.startswith("<!-- review-kit:summary -->\n## 🔴 Don't merge yet"))
+        self.assertIn('🔴 1 critical · 🟡 1 minor', body)
+        self.assertIn('<summary>🟡 Minor (1)</summary>', body)
+        self.assertLess(body.index('Data loss'), body.index('Nit name'))
+        # Minor findings stay out of the inline comments.
+        self.assertEqual([c['line'] for c in p['comments']], [3])
+        self.assertIn('🔴 **Critical** · Data loss', p['comments'][0]['body'])
+        self.assertIn('<summary>🤖 Prompt for AI agents</summary>', p['comments'][0]['body'])
+
+    def test_suggestion_block_only_when_comment_covers_whole_range(self):
+        exact = dict(finding(), line_start=2, line_end=4, suggestion='a = b = c = 1')
+        c = self.build([exact], 'ship-after-fixes')['comments'][0]
+        self.assertEqual((c['start_line'], c['line']), (2, 4))
+        self.assertIn('```suggestion\na = b = c = 1\n```', c['body'])
+        # Lines 4-6 only partly in the diff: GitHub would replace the wrong lines.
+        partial = dict(finding(), line_start=4, line_end=6, suggestion='x = 1')
+        c = self.build([partial], 'ship-after-fixes')['comments'][0]
+        self.assertNotIn('```suggestion', c['body'])
+        self.assertIn('Replacement for lines 4-6', c['body'])
+
+    def test_fence_survives_backticks_and_outside_diff_is_listed(self):
+        f = dict(finding(), file='other.py', suggestion='s = """```"""')
+        p = self.build([f], 'ship-after-fixes')
+        self.assertEqual(p['comments'], [])
+        self.assertIn('Outside the lines this PR changed (1)', p['body'])
+        self.assertIn('````python\ns = """```"""\n````', p['body'])
+        self.assertEqual(post_review.fence('a ``` b'), '````\na ``` b\n````')
+
+    def test_endorsed_authors_are_not_pinged(self):
+        d = dict(review(), endorsed_comments=[dict(author='alice', where='code.py:1', why='right')])
+        self.package(d)
+        payload, _ = post_review.build(self.pkg)
+        self.assertIn('`@alice`', payload['body'])
+        self.assertIn('✅ Looks good to merge', payload['body'])
+
+
 if __name__ == '__main__':
     unittest.main()
