@@ -100,6 +100,36 @@ class Walkthrough(unittest.TestCase):
         self.assertIn('Problems, in depth', html)
         self.assertIn('Use a key', html)
 
+    def test_header_links_the_pr_and_verdict_card_leads(self):
+        meta = json.loads((self.pkg / 'meta.json').read_text())
+        meta.update(description='PR #52: Run the join (https://github.com/o/r/pull/52)', added=10, deleted=2)
+        (self.pkg / 'meta.json').write_text(json.dumps(meta))
+        html = self.render(dict(one_liner='What it does'))
+        self.assertIn('<a href="https://github.com/o/r/pull/52">PR #52 ↗</a>', html)
+        self.assertIn('<h1>Run the join</h1>', html)            # PR title, not the raw description line
+        self.assertNotIn('(https://github.com/o/r/pull/52)', html)
+        self.assertLess(html.index('id="verdict"'), html.index('id="problems"'))
+        self.assertIn('1 critical problem', html)
+        self.assertNotIn('none problem', html)
+
+    def test_clean_review_says_so_in_the_verdict_card(self):
+        (self.pkg / 'findings.json').write_text(json.dumps(dict(
+            execution_status='completed', verdict='ship', summary='Looked at pay.py', findings=[])))
+        html = self.render()
+        self.assertIn('Ready to ship', html)
+        self.assertIn('No issues found.', html)
+        self.assertNotIn('none problem', html)
+
+
+class Demo(unittest.TestCase):
+    def test_demo_packages_render(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            subprocess.run([sys.executable, str(ROOT / 'evals/build_walkthrough_demo.py'), tmp], check=True, capture_output=True)
+            for name, text in (('review-pkg', 'Failed bank transfers are marked paid'), ('explain-pkg', 'Explainer only')):
+                r = subprocess.run([sys.executable, str(SCRIPTS / 'render_html.py'), str(Path(tmp) / name)], capture_output=True, text=True)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn(text, (Path(tmp) / name / 'review.html').read_text())
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -34,7 +34,7 @@ jobs:
           done
       - name: Scripts compile
         run: |
-          python -m py_compile skills/review-kit/scripts/*.py evals/score.py evals/build_hard_fixtures.py evals/check_keys.py evals/build_refine_fixture.py
+          python -m py_compile skills/review-kit/scripts/*.py evals/score.py evals/build_hard_fixtures.py evals/check_keys.py evals/build_refine_fixture.py evals/build_walkthrough_demo.py
           bash -n skills/review-kit/scripts/codex_review.sh
           bash -n evals/run_case.sh
           bash -n evals/run_adversarial_baseline.sh

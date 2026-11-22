@@ -159,8 +159,8 @@ Unverified ideas never go here: only confirmed findings. `plausible` and `droppe
 `explain` writes this page without hunting for bugs: the big picture, reading order, walkthrough,
 key concepts and "check it yourself". Write `findings.json` with `"mode": "explain"`,
 `execution_status: "completed"`, `verdict: "ship"`, a one-line `summary` of what was explained, and
-empty `findings`. The page then shows "Walkthrough only, not reviewed for bugs" instead of a
-verdict. Use `--whole` with a file or folder target to explain existing code.
+empty `findings`. The page then has no verdict card; its facts line says the code was not checked
+for bugs. Use `--whole` with a file or folder target to explain existing code.
 
 ### Parallel writers (deep, pr, full, arch)
 
@@ -182,9 +182,10 @@ Quick and explain modes write everything inline.
 python3 "${CLAUDE_SKILL_DIR}/scripts/render_html.py" "$PKG"
 ```
 
-The renderer adds, from `findings.json` alone: a "Problems at a glance" table (uses each finding's
-`recommendation` first sentence, so keep that a concrete one-liner), severity filters, and "Copy
-fix prompt" buttons built from title, location, summary, scenario, fix and test explanation.
+The renderer adds, from `findings.json` alone: the verdict card, whose table lists every finding with
+the first sentence of its `recommendation` (so keep that a concrete one-liner), and its `summary`
+under the verdict (so make it say why, in one or two sentences, without repeating `one_liner`). It
+also adds severity filters and "Copy fix prompt" buttons built from title, location, summary, scenario, fix and test explanation.
 
 The page is rendered to `$PKG/review.html` (the scratch folder), then kept with `findings.json`
 in `<repo>/.review-kit/reviews/<run>/`; that folder ignores itself in git, so the repo stays clean. The renderer validates

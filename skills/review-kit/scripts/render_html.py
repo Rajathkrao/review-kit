@@ -276,15 +276,44 @@ nav.rail a{color:var(--ink);text-decoration:none;display:flex;gap:8px;align-item
 nav.rail a:hover{color:var(--accent);text-decoration:underline}
 nav.rail .tag{flex:none;font-weight:600;font-size:12px;min-width:2.2em}
 main{min-width:0;position:relative}
-.where-from{font-size:14px;color:var(--soft);margin:0 0 14px;padding-right:110px}
-h1{font:600 clamp(28px,4.2vw,42px)/1.15 var(--serif);letter-spacing:-.01em;margin:0 0 18px;max-width:24ch}
-.verdict{display:inline-block;font-weight:600;font-size:15px;padding:3px 12px;border-radius:999px;margin-bottom:12px}
-.verdict.crit{background:var(--crit-wash);color:var(--crit)}.verdict.imp{background:var(--imp-wash);color:var(--imp)}.verdict.ok{background:var(--ok-wash);color:var(--ok)}
+header.top{display:flex;align-items:center;gap:16px;margin:0 0 18px}
+.crumbs{flex:1;min-width:0;margin:0;font-size:14px;color:var(--soft);overflow-wrap:anywhere}
+.crumbs strong{color:var(--ink);font-weight:600}.crumbs .sep{color:var(--rule);margin:0 2px}
+.crumbs a{text-decoration:none;font-weight:600}.crumbs a:hover{text-decoration:underline}
+.crumbs code{font-size:12.5px}
+h1{font:600 clamp(28px,4.2vw,40px)/1.15 var(--serif);letter-spacing:-.01em;margin:0 0 12px;max-width:30ch}
+.facts{display:flex;flex-wrap:wrap;gap:6px 22px;margin:0 0 28px;font-size:14px;color:var(--soft)}
+.fact{display:inline-flex;align-items:center;gap:6px}
+.c-add{color:var(--add-mark);font-weight:600}.c-del{color:var(--crit);font-weight:600}
+.f-note{color:var(--accent);font-weight:600}
+.hero{border:1px solid var(--rule);border-left:6px solid var(--min);background:var(--sheet);border-radius:10px;padding:20px 24px 16px;margin:0 0 8px}
+.hero-crit{border-left-color:var(--crit)}.hero-imp{border-left-color:var(--imp)}.hero-ok{border-left-color:var(--ok)}
+.hero-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
+.v-label{font:700 24px/1.2 var(--serif)}
+.hero-crit .v-label{color:var(--crit)}.hero-imp .v-label{color:var(--imp)}.hero-ok .v-label{color:var(--ok)}
+.v-tally{font-size:14px;color:var(--soft);font-weight:600}.v-tally a{color:var(--soft)}
+.v-why{font:17px/1.6 var(--serif);margin:8px 0 4px;max-width:72ch}
+.hero .toolbar{margin:14px 0 6px}
+.hero table.glance tr:first-child td{border-top:1px solid var(--rule)}
+.why{margin-bottom:18px}
+.ba{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:12px;align-items:stretch}
+.ba-card{border:1px solid var(--rule);border-radius:8px;padding:14px 18px;background:var(--sheet)}
+.ba-card h3{font:600 13px/1.4 var(--sans);text-transform:uppercase;letter-spacing:.06em;color:var(--soft);margin:0 0 6px}
+.ba-after{border-color:var(--add-mark);background:var(--add)}.ba-after h3{color:var(--add-mark)}
+.ba-card .narr{font-size:16px}.ba-card .narr p:last-child{margin-bottom:0}
+.ba-arrow{align-self:center;font:600 22px/1 var(--sans);color:var(--soft)}
+@media (max-width:720px){.ba{grid-template-columns:minmax(0,1fr)}.ba-arrow{transform:rotate(90deg);justify-self:center}}
+.key-add{background:var(--add);color:var(--add-mark);font-weight:600;padding:0 4px;border-radius:3px}
+table.files{border-collapse:collapse;width:100%;font-size:15px}
+table.files td{padding:10px 12px 10px 0;border-top:1px solid var(--rule);vertical-align:top}
+table.files td.f-no{width:2em;color:var(--soft);font-weight:600}
+table.files td:last-child{white-space:nowrap;text-align:right;padding-right:0}
+.f-chg{font-size:12px;color:var(--soft);border:1px solid var(--rule);border-radius:999px;padding:0 7px;margin-left:6px}
+.f-role{display:block;color:var(--soft);font-size:14px;margin-top:2px}
+.churn{font:13px/1.4 var(--mono);display:inline-flex;align-items:center;gap:6px}
+.bar{display:inline-flex;width:64px;height:8px;background:var(--rule-2);border-radius:2px;overflow:hidden}
+.bar .b-a{background:var(--add-mark);display:block}.bar .b-d{background:var(--crit);display:block}
 .lede{font:19px/1.55 var(--serif);max-width:66ch;margin:0 0 22px}
-.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);margin:0 0 8px}
-.facts div{padding:12px 16px 12px 0}
-.facts dt{font-size:13px;color:var(--soft);margin:0 0 2px}
-.facts dd{margin:0;font-weight:600;font-size:15px;overflow-wrap:anywhere}
 section{margin-top:64px}
 h2.sec{font:600 26px/1.25 var(--serif);margin:0 0 6px}
 .sec-note{color:var(--soft);margin:0 0 24px;max-width:66ch}
@@ -292,9 +321,6 @@ h2.sec{font:600 26px/1.25 var(--serif);margin:0 0 6px}
 .narr p{margin:0 0 .8em}
 .narr ul,.narr ol{margin:0 0 .9em;padding-left:1.3em}
 .narr li{margin:0 0 .35em}
-.context{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:28px;margin:8px 0 0}
-.context h3{font:600 15px/1.4 var(--sans);margin:0 0 6px;color:var(--soft)}
-.context .narr{font-size:16px}
 .step{display:grid;grid-template-columns:44px minmax(0,1fr);gap:0 18px;padding:28px 0;border-top:1px solid var(--rule)}
 .step:first-of-type{border-top:0;padding-top:4px}
 .step-n{font:600 22px/1 var(--serif);color:var(--accent);width:44px;height:44px;border:1.5px solid var(--accent);border-radius:50%;display:grid;place-items:center;margin-top:2px}
@@ -387,7 +413,6 @@ footer code{font-size:12px;overflow-wrap:anywhere}
 }
 .effort{display:inline-flex;gap:3px;vertical-align:-1px}.effort i{width:10px;height:10px;border-radius:2px;background:var(--rule)}.effort i.on{background:var(--accent)}
 .pic-h{font:600 17px/1.4 var(--sans);margin:28px 0 4px}
-ol.order{padding-left:1.4em;max-width:80ch}ol.order li{margin:0 0 10px}ol.order .role{color:var(--soft)}
 .wal li{margin:0 0 10px}
 .p-head{display:flex;align-items:center;gap:8px}
 .p-head .copy{margin-left:auto}
@@ -405,14 +430,13 @@ table.glance a{color:var(--ink);text-decoration:none;font-weight:600}table.glanc
 .pill{display:inline-block;min-width:2.6em;text-align:center;padding:1px 8px;border-radius:999px;font-size:12px;background:var(--min-wash);color:var(--min)!important}
 .pill.critical{background:var(--crit-wash);color:var(--crit)!important}.pill.important{background:var(--imp-wash);color:var(--imp)!important}
 details.fold{border:0;padding:0;margin-top:26px}
-details.fold summary{display:flex;align-items:baseline;gap:10px;cursor:pointer;list-style:none}
+details.fold summary{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;cursor:pointer;list-style:none}
 details.fold summary::-webkit-details-marker{display:none}
 details.fold summary h4{margin:0}details.fold summary h4::after{content:" ▸";color:var(--soft)}
 details.fold[open] summary h4::after{content:" ▾"}
-.fold-hint{font:13px/1.4 var(--mono);color:var(--soft)}
+.fold-hint{font:13px/1.4 var(--mono);color:var(--soft);min-width:0;overflow-wrap:anywhere}
 kbd{font:12px/1 var(--mono);border:1px solid var(--rule);border-bottom-width:2px;border-radius:4px;padding:1px 5px;background:var(--sheet)}
 nav.rail a.on{color:var(--accent);font-weight:600}
-#theme{position:absolute;top:0;right:0}
 .hide{display:none!important}
 :root[data-theme="dark"]{
   --paper:#141917; --sheet:#1a201e; --ink:#e3e8e5; --soft:#9aa7a1; --rule:#323b37; --rule-2:#262e2b;
@@ -421,8 +445,8 @@ nav.rail a.on{color:var(--accent);font-weight:600}
   --ok:#94cfa7; --ok-wash:#1b2c22; --add:#1d2b21; --add-mark:#8ccb9b; --del:#33201e;
   --code-ink:#dfe6e2; --tk:#d6a2e0; --ts:#9ed3ab; --tn:#f0b27a; --tc:#7d8a85; --tt:#93c2ec;
 }
-@media (max-width:640px){table.glance td:last-child{display:none}}
-@media print{.problem.shut .p-body{display:block}.toolbar,.fold-btn,#theme{display:none}
+@media (max-width:640px){table.glance td:last-child{display:none}.hero{padding:16px}}
+@media print{.problem.shut .p-body{display:block}.toolbar,.fold-btn,#theme{display:none}.hero{break-inside:avoid}
 nav.rail{display:none}.layout{display:block}.copy{display:none}body{background:#fff}}
 """
 
@@ -529,6 +553,22 @@ def depth_warnings(findings, details, steps, src):
     return out
 
 
+EFFORT_TEXT = {1: "under 10 min", 2: "about 15 min", 3: "about 30 min", 4: "about an hour", 5: "half a day or more"}
+
+
+def where_from(meta):
+    """Split meta.description ('PR #52: Title (https://…)', 'branch x vs abc + uncommitted') into parts."""
+    desc = " ".join(str(meta.get("description") or "").split())
+    url = ""
+    m = re.search(r"\s*\((https?://[^\s()]+)\)\s*$", desc)
+    if m:
+        url, desc = m.group(1), desc[:m.start()]
+    m = re.match(r"PR #(\d+):?\s*(.*)$", desc)
+    if m:
+        return {"label": f"PR #{m.group(1)}", "url": url, "title": m.group(2).strip()}
+    return {"label": desc, "url": url, "title": ""}
+
+
 def render(pkg: Path):
     # Never leave a stale clean report at the package path after a failed rerender.
     (pkg / "review.html").unlink(missing_ok=True)
@@ -583,11 +623,10 @@ def render(pkg: Path):
     explain_only = fx.get("mode") == "explain"
     if status != "completed":
         verdict_txt, verdict_cls = f"Review {status.replace('-', ' ')}: no verdict", "imp"
-    elif explain_only:
-        verdict_txt, verdict_cls = "Walkthrough only, not reviewed for bugs", "imp"
-    title = ex.get("title") or meta.get("description", "Code review")
+    origin = where_from(meta)
+    title = ex.get("title") or origin["title"] or "Code review"
     counts = {k: sum(1 for f in findings if f.get("severity") == k) for k in SEV_ORDER}
-    sev_text = ", ".join(f"{v} {k}" for k, v in counts.items() if v) or "none"
+    sev_text = " · ".join(f"{v} {k}" for k, v in counts.items() if v)
     contract_src = ""
     m = re.search(r"source:\s*`?([^\s`,;()]+)", contract, re.I)
     if m:
@@ -753,11 +792,22 @@ def render(pkg: Path):
     concepts = "".join(f'<dt>{e(c.get("term"))}</dt><dd>{inline_md(c.get("meaning"))}</dd>' for c in ex.get("key_concepts", []))
     tryit = "".join(f'<li><input type="checkbox" id="try{i}"><label for="try{i}">{inline_md(t)}</label></li>'
                     for i, t in enumerate(ex.get("try_it_yourself", []), 1))
+    # Changed files: the writer's roles and reading order joined with the real line counts.
+    stats = {f.get("path"): f for f in meta.get("files", []) if isinstance(f, dict)}
+    roles = {c.get("path"): c for c in ex.get("changed_files", []) if isinstance(c, dict)}
+    paths = sorted(set(stats) | set(roles), key=lambda p: (roles.get(p, {}).get("order") or 999, p or ""))
+    biggest = max([int(f.get("added") or 0) + int(f.get("deleted") or 0) for f in stats.values()] + [1])
+    def churn(f):
+        a, d = int(f.get("added") or 0), int(f.get("deleted") or 0)
+        w = lambda n: f"{max(2, round(60 * n / biggest)) if n else 0}px"
+        return (f'<span class="churn"><span class="c-add">+{a:,}</span> <span class="c-del">−{d:,}</span>'
+                f'<span class="bar"><i class="b-a" style="width:{w(a)}"></i><i class="b-d" style="width:{w(d)}"></i></span></span>')
     files_rows = "".join(
-        f'<tr><td><code>{e(c.get("path"))}</code></td><td>{e(c.get("change", ""))}</td><td>{inline_md(c.get("role", ""))}</td></tr>'
-        for c in ex.get("changed_files", [])) or "".join(
-        f'<tr><td><code>{e(f.get("path"))}</code></td><td>{e(f.get("status"))}</td><td>+{f.get("added")} −{f.get("deleted")}</td></tr>'
-        for f in meta.get("files", []))
+        f'<tr><td class="f-no">{e(roles.get(p, {}).get("order") or "")}</td><td><code>{e(p)}</code>'
+        f'{(" <span class=f-chg>" + e(roles[p].get("change") or stats.get(p, {}).get("status") or "") + "</span>") if p in roles else ""}'
+        f'<span class="f-role">{inline_md(roles.get(p, {}).get("role", ""))}</span></td>'
+        f'<td>{churn(stats[p]) if p in stats else ""}</td></tr>'
+        for p in paths if p)
 
     # --- the big picture: architecture, flows, module map (all drawn here, never by the model)
     pics = []
@@ -766,7 +816,9 @@ def render(pkg: Path):
         svg = diagrams.architecture(arch, by_id)
         if svg:
             pics.append(f'<figure class="dg-wrap">{svg}<figcaption>{inline_md(arch.get("caption") or "How the parts of this change fit together. Arrows show calls and data flow.")}</figcaption>'
-                        '<div class="legend"><span class="lg-changed">changed in this change</span><span class="lg-crit">has a problem (badge links to it)</span><span class="lg-ext">external system</span></div></figure>')
+                        '<div class="legend"><span class="lg-changed">changed in this change</span>'
+                        + ("" if explain_only else '<span class="lg-crit">has a problem (badge links to it)</span>')
+                        + '<span class="lg-ext">external system</span></div></figure>')
     seqs = ex.get("sequences") or ([ex["sequence"]] if isinstance(ex.get("sequence"), dict) else [])
     for q in seqs:
         if isinstance(q, dict):
@@ -787,84 +839,90 @@ def render(pkg: Path):
         big = f'''
     <section id="picture">
       <h2 class="sec">The big picture</h2>
-      <p class="sec-note">Read this first: the parts, how a request or job moves through them, and where the problems sit.</p>
+      <p class="sec-note">The parts this change touches and how a request or job moves through them{"" if explain_only or not findings else ", with each problem badged where it happens"}.</p>
       {"".join(pics)}
     </section>'''
-
-    # --- reading order (like a change stack: foundations first)
-    order_items = sorted((c for c in ex.get("changed_files", []) if isinstance(c, dict) and c.get("order")),
-                         key=lambda c: c.get("order"))
-    reading = ""
-    if order_items:
-        reading = '<h3 class="pic-h">Suggested reading order</h3><ol class="order">' + "".join(
-            f'<li><code>{e(c.get("path"))}</code> <span class="role">{inline_md(c.get("role", ""))}</span></li>' for c in order_items) + '</ol>'
 
     # --- review effort, 1 (minutes) to 5 (an afternoon), from size, spread and risk
     changed_lines = int(meta.get("added", 0)) + int(meta.get("deleted", 0))
     effort = 1 + (changed_lines > 80) + (changed_lines > 300) + (changed_lines > 800) + (len(meta.get("risk") or []) >= 3)
-    effort = min(5, int(ex.get("review_effort") or effort))
-    effort_html = '<span class="effort" aria-hidden="true">' + "".join(f'<i class="{"on" if k < effort else ""}"></i>' for k in range(5)) + f'</span> {effort}/5'
+    effort = max(1, min(5, int(ex.get("review_effort") or effort)))
 
+    plausible_items = [p for p in fx.get("plausible", []) if isinstance(p, dict)]
     plausible = "".join(
         f'<li><strong>{inline_md(p.get("title"))}</strong> <code>{e(p.get("file", ""))}{(":" + str(p["line_start"])) if p.get("line_start") else ""}</code>. '
-        f'Check: {inline_md(p.get("check", ""))}</li>' for p in fx.get("plausible", []) if isinstance(p, dict))
+        f'Check: {inline_md(p.get("check", ""))}</li>' for p in plausible_items)
 
-    nav = ['<nav class="rail" aria-label="Contents"><h2>On this page</h2><ol>',
-           '<li><a href="#top">Summary</a></li>']
-    if findings:
-        nav.append('<li><a href="#glance">Problems at a glance</a></li>')
-    if big:
-        nav.append('<li><a href="#picture">The big picture</a></li>')
-    if steps:
-        nav.append('<li><a href="#walkthrough">How the code works</a></li>')
-    if plausible:
-        nav.append('<li><a href="#plausible">Worth a look</a></li>')
-    nav.append('</ol>')
-    if steps:
-        nav.append('<h2>Walkthrough</h2><ol>' + "".join(
-            f'<li><a href="#step-{i}"><span class="tag">{i}</span>{e(s.get("title"))}</a></li>' for i, s in enumerate(steps, 1)) + '</ol>')
-    if findings:
-        nav.append('<h2>Problems</h2><ol>' + "".join(
-            f'<li><a href="#{e(f["id"])}"><span class="tag" style="color:var(--{ {"critical": "crit", "important": "imp"}.get(f.get("severity"), "min")})">{e(f["id"])}</span>{e(f.get("title"))}</a></li>'
-            for f in findings) + '</ol>')
-    more = [("spec", "Requirements", spec_rows), ("tests", "Test evidence", tests), ("concepts", "Terms", concepts),
-            ("try", "Check it yourself", tryit), ("files", "Changed files", files_rows), ("dropped", "Dismissed", dropped or unchecked)]
-    nav.append('<h2>More</h2><ol>' + "".join(f'<li><a href="#{k}">{t}</a></li>' for k, t, v in more if v) + '</ol></nav>')
-
+    # --- context: why, then before and after side by side
     overview = ""
     if ex.get("why") or ex.get("before") or ex.get("after"):
-        overview = '<div class="context">' + "".join(
-            f'<div><h3>{lbl}</h3><div class="narr">{prose(ex.get(k))}</div></div>'
-            for k, lbl in (("why", "Why this change exists"), ("before", "Before"), ("after", "After")) if ex.get(k)) + "</div>"
+        ba = ""
+        if ex.get("before") or ex.get("after"):
+            ba = ('<div class="ba">'
+                  + (f'<div class="ba-card ba-before"><h3>Before</h3><div class="narr">{prose(ex.get("before"))}</div></div>' if ex.get("before") else "")
+                  + ('<div class="ba-arrow" aria-hidden="true">→</div>' if ex.get("before") and ex.get("after") else "")
+                  + (f'<div class="ba-card ba-after"><h3>After</h3><div class="narr">{prose(ex.get("after"))}</div></div>' if ex.get("after") else "")
+                  + '</div>')
+        why_html = f'<div class="narr why">{prose(ex.get("why"))}</div>' if ex.get("why") else ""
+        overview = f'''
+    <section id="context">
+      <h2 class="sec">What changed and why</h2>
+      {why_html}
+      {ba}
+    </section>'''
 
     walk = ""
     if steps:
         walk = f'''
     <section id="walkthrough">
       <h2 class="sec">How the code works</h2>
-      <p class="sec-note">The change in the order it runs, starting at <code>{e(ex.get("entry_point", "the entry point"))}</code>. Code is read from the reviewed commit; highlighted lines carry a problem.</p>
+      <p class="sec-note">The change in the order it runs, starting at <code>{e(ex.get("entry_point", "the entry point"))}</code>. Code is read from the reviewed commit; <span class="key-add">+ lines</span> are new or edited, and a coloured edge marks a problem.</p>
       {"".join(step_html)}
       {('<p class="sec-note">Also in this change: ' + ", ".join(f'<a href="#{e(o)}">{e(o)}</a>' for o in orphans) + ".</p>") if orphans else ""}
     </section>'''
     elif findings:
         walk = '<section><p class="sec-note">No walkthrough was written for this run. Problems are explained below.</p></section>'
 
-    glance = ""
-    if findings:
+    # --- the verdict card: verdict, why, and every problem with its one-line fix
+    hero = ""
+    if not explain_only:
         rows = "".join(
             f'<tr data-sev="{e(f.get("severity", "minor"))}"><td><a class="pill {e(f.get("severity", "minor"))}" href="#{e(f["id"])}">{e(f["id"])}</a></td>'
             f'<td><a href="#{e(f["id"])}">{inline_md(f.get("title"))}</a><span class="g-fix">{inline_md(first_sentence(f.get("recommendation") or (details.get(f["id"]) or {}).get("fix", {}).get("explanation")))}</span></td>'
             f'<td><code>{e(f.get("file"))}:{e(f.get("line_start"))}</code></td></tr>' for f in findings)
-        chips = '<button class="chip on" data-filter="all">All ' + str(len(findings)) + '</button>' + "".join(
-            f'<button class="chip {k}" data-filter="{k}">{SEV_LABEL.get(k, k)} {v}</button>' for k, v in counts.items() if v)
-        all_fix = FIX_PREFIX_ALL + "\n\n".join(fix_prompts)
-        glance = f'''
-    <section id="glance">
-      <h2 class="sec">Problems at a glance</h2>
-      <div class="toolbar">{chips}<span class="grow"></span>
-        <button class="copy" data-copy="{e(all_fix)}" title="Copy one prompt that asks Claude Code to fix every problem listed">Copy all fix prompts</button></div>
-      <table class="glance"><tbody>{rows}</tbody></table>
+        tools = ""
+        if findings:
+            several = sum(1 for v in counts.values() if v) > 1
+            chips = ""
+            if several:
+                chips = f'<button class="chip on" data-filter="all">All {len(findings)}</button>' + "".join(
+                    f'<button class="chip {k}" data-filter="{k}">{SEV_LABEL.get(k, k)} {v}</button>' for k, v in counts.items() if v)
+            all_fix = FIX_PREFIX_ALL + "\n\n".join(fix_prompts)
+            label = "Copy fix prompt" if len(findings) == 1 else f"Copy fix prompt for all {len(findings)}"
+            tools = (f'<div class="toolbar">{chips}<span class="grow"></span>'
+                     f'<button class="copy" data-copy="{e(all_fix)}" title="Copy one prompt that asks Claude Code to fix every problem listed">{label}</button></div>')
+        if findings:
+            tally = sev_text + (" problem" if len(findings) == 1 else " problems")
+        elif status == "completed":
+            tally = "No issues found. Nothing survived verification."
+        else:
+            tally = f"No clean conclusion: the review did not complete ({status.replace('-', ' ')})."
+        extra = []
+        if plausible_items:
+            extra.append(f'<a href="#plausible">{len(plausible_items)} worth a look</a>')
+        if fx.get("dropped"):
+            extra.append(f'<a href="#dropped">{len(fx["dropped"])} dismissed</a>')
+        table = f'<table class="glance"><tbody>{rows}</tbody></table>' if rows else ""
+        hero = f'''
+    <section class="hero hero-{verdict_cls}" id="verdict" aria-label="Verdict">
+      <div class="hero-head"><span class="v-label">{e(verdict_txt)}</span><span class="v-tally">{e(tally)}{(" · " + " · ".join(extra)) if extra else ""}</span></div>
+      <p class="v-why">{inline_md(fx.get("summary", ""))}</p>
+      {tools}
+      {table}
     </section>'''
+
+    probs = ""
+    if findings:
         probs = f'''
     <section id="problems">
       <h2 class="sec">Problems, in depth</h2>
@@ -872,12 +930,6 @@ def render(pkg: Path):
       <div class="toolbar"><button class="chip" id="fold-all">Collapse all</button><button class="chip" id="open-all">Expand all</button></div>
       {"".join(prob_html)}
     </section>'''
-    elif explain_only:
-        probs = '<section id="problems"><h2 class="sec">Problems</h2><p class="sec-note">This page explains the code; it was not reviewed for bugs. Run <code>/rk:review</code> on the same target for that.</p></section>'
-    elif status == "completed":
-        probs = f'<section id="problems"><h2 class="sec">Problems</h2><p class="clean">No issues found. Nothing survived verification. {inline_md(fx.get("summary", ""))}</p></section>'
-    else:
-        probs = '<section id="problems"><h2 class="sec">Problems</h2><p class="clean">No clean conclusion: the review did not complete ({e(status)}). See what was not checked below.</p></section>'
 
     sections = []
     if plausible:
@@ -887,42 +939,83 @@ def render(pkg: Path):
         sections.append(f'<section id="spec"><h2 class="sec">Requirements</h2><p class="sec-note">Checked against {inline_md(contract_src or "the stated purpose")}.</p>'
                         f'<table class="req"><thead><tr><th>Requirement</th><th>Status</th><th>Evidence</th></tr></thead><tbody>{spec_rows}</tbody></table>'
                         + (f'<details><summary>The full contract used</summary><pre class="raw">{e(contract)}</pre></details>' if contract else "") + '</section>')
-    sections.append('<section id="tests"><h2 class="sec">Test evidence</h2>'
-                    + (f'<pre class="raw">{e(tests)}</pre>' if tests.strip() else '<p class="sec-note">No tests were run in this review. Findings were confirmed by reading the code.</p>') + '</section>')
+    if tests.strip():
+        sections.append(f'<section id="tests"><h2 class="sec">Test evidence</h2><pre class="raw">{e(tests)}</pre></section>')
+    if files_rows:
+        ordered = any(r.get("order") for r in roles.values())
+        sections.append('<section id="files"><h2 class="sec">Files in this change</h2>'
+                        + ('<p class="sec-note">Numbered in the order to read them: foundations first, tests last.</p>' if ordered else "")
+                        + f'<table class="files"><tbody>{files_rows}</tbody></table></section>')
     if concepts:
         sections.append(f'<section id="concepts"><h2 class="sec">Terms used here</h2><dl class="terms">{concepts}</dl></section>')
     if tryit:
         sections.append(f'<section id="try"><h2 class="sec">Check it yourself</h2><ul class="checks">{tryit}</ul></section>')
-    sections.append(f'<section id="files"><h2 class="sec">Changed files</h2>{reading}<table class="req"><tbody>{files_rows}</tbody></table></section>')
     if dropped or unchecked:
         sections.append('<section id="dropped"><h2 class="sec">Dismissed</h2><p class="sec-note">Raised during the review and disproved by the code, or out of scope. Each says why, so you can overrule it.</p>'
                         + (f'<details open><summary>{len(fx.get("dropped", []))} candidates dismissed, with the disproof</summary><ul>{dropped}</ul></details>' if dropped else "")
                         + (f'<details><summary>Not checked or set aside</summary><ul>{unchecked}</ul></details>' if unchecked else "") + '</section>')
 
-    facts = [("Verdict basis", f"{sev_text} problem{'s' if len(findings) != 1 else ''}"),
-             ("Checked against", contract_src or "commit messages and code"),
-             ("Size", f"{len(meta.get('files', []))} files, +{meta.get('added', 0)} −{meta.get('deleted', 0)}"),
-             ("Tests", tests_line),
-             ("Review effort", effort_html),
-             ("Reviewed commit", (meta.get("reviewed_commit") or "")[:10] or "not recorded")]
-    facts_html = '<dl class="facts">' + "".join(f'<div><dt>{e(k)}</dt><dd>{v if k == "Review effort" else inline_md(v)}</dd></div>' for k, v in facts) + '</dl>'
+    # --- navigation
+    nav = ['<nav class="rail" aria-label="Contents"><h2>On this page</h2><ol>',
+           f'<li><a href="#top">{"Overview" if explain_only else "Verdict"}</a></li>']
+    for cond, href, label in ((overview, "context", "What changed and why"), (big, "picture", "The big picture"),
+                              (steps, "walkthrough", "How the code works"), (findings, "problems", "Problems, in depth"),
+                              (plausible, "plausible", "Worth a look")):
+        if cond:
+            nav.append(f'<li><a href="#{href}">{label}</a></li>')
+    nav.append('</ol>')
+    if findings:
+        nav.append('<h2>Problems</h2><ol>' + "".join(
+            f'<li><a href="#{e(f["id"])}"><span class="tag" style="color:var(--{ {"critical": "crit", "important": "imp"}.get(f.get("severity"), "min")})">{e(f["id"])}</span>{e(f.get("title"))}</a></li>'
+            for f in findings) + '</ol>')
+    if steps:
+        nav.append('<h2>Walkthrough</h2><ol>' + "".join(
+            f'<li><a href="#step-{i}"><span class="tag">{i}</span>{e(s.get("title"))}</a></li>' for i, s in enumerate(steps, 1)) + '</ol>')
+    more = [("spec", "Requirements", spec_rows), ("tests", "Test evidence", tests.strip()), ("files", "Files", files_rows),
+            ("concepts", "Terms", concepts), ("try", "Check it yourself", tryit), ("dropped", "Dismissed", dropped or unchecked)]
+    nav.append('<h2>More</h2><ol>' + "".join(f'<li><a href="#{k}">{t}</a></li>' for k, t, v in more if v) + '</ol></nav>')
+
+    # --- where this came from, and one line of facts under the title
+    commit = (meta.get("reviewed_commit") or "")[:7]
+    crumbs = [f'<strong>{e(meta.get("repo", ""))}</strong>'] if meta.get("repo") else []
+    if origin["label"]:
+        crumbs.append(f'<a href="{e(origin["url"])}">{e(origin["label"])} ↗</a>' if origin["url"].startswith("https://")
+                      else e(origin["label"]))
+    if commit:
+        crumbs.append(f'<span title="Reviewed commit">at <code>{e(commit)}</code></span>')
+    nfiles = len(meta.get("files", []))
+    facts = [f'{nfiles} file{"s" if nfiles != 1 else ""} <span class="c-add">+{int(meta.get("added", 0)):,}</span> '
+             f'<span class="c-del">−{int(meta.get("deleted", 0)):,}</span>']
+    boxes = "".join('<i class="on"></i>' if k < effort else '<i></i>' for k in range(5))
+    facts.append(f'<span title="Estimated from size and risk: {effort} of 5"><span class="effort" aria-hidden="true">{boxes}</span>'
+                 f' {EFFORT_TEXT[effort]} to {"read" if explain_only else "review"}</span>')
+    if explain_only:
+        facts.append('<span class="f-note" title="Explain mode describes the code. Run /rk:review on the same target to hunt for bugs.">Explainer only, not checked for bugs</span>')
+    else:
+        facts.append("Tests: " + (inline_md(tests_line) if tests_line != "not run" else "none run; problems confirmed by reading the code"))
+        if contract_src:
+            facts.append(f"Checked against {inline_md(contract_src)}")
+    lede = ex.get("one_liner") or ("" if not explain_only else fx.get("summary", ""))
+    lede_html = f'<p class="lede">{inline_md(lede)}</p>' if lede else ""
+    facts_html = '<p class="facts">' + "".join(f'<span class="fact">{x}</span>' for x in facts) + '</p>'
+    sep = ' <span class="sep">/</span> '
 
     page = f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{e(title)}: code review</title>
+<title>{e(title)}: {"walkthrough" if explain_only else "code review"}</title>
 <style>{CSS}{diagrams.CSS}</style></head>
 <body><div class="layout">
   {"".join(nav)}
   <main id="top">
-    <button id="theme" class="chip" title="Switch between light and dark">Light / dark</button>
-    <p class="where-from">{e(meta.get("repo", ""))}, {e(meta.get("description", ""))}</p>
-    <span class="verdict {verdict_cls}">{e(verdict_txt)}</span>
-    <h1>{e(title)}</h1>
-    <p class="lede">{inline_md(ex.get("one_liner") or fx.get("summary", ""))}</p>
-    {f'<div class="narr"><p>{inline_md(fx.get("summary"))}</p></div>' if ex.get("one_liner") and fx.get("summary") else ""}
+    <header class="top">
+      <p class="crumbs">{sep.join(crumbs)}</p>
+      <button id="theme" class="chip" title="Switch between light and dark">Light / dark</button>
+    </header>
+    <h1>{inline_md(title)}</h1>
+    {lede_html}
     {facts_html}
+    {hero}
     {overview}
-    {glance}
     {big}
     {walk}
     {probs}
