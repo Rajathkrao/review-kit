@@ -34,6 +34,53 @@ claude --plugin-dir ./review-kit
 ```
 </details>
 
+## Which command when
+
+You only need to remember `/rk:review`. It picks quick or deep for you. Reach for the others when
+you want something specific:
+
+| You want to… | Run |
+|---|---|
+| Check my change before I commit or push (the everyday case) | `/rk:review` |
+| A fast check of a small change, in about a minute | `/rk:quick` |
+| A thorough check of a big or risky change, with the HTML walkthrough | `/rk:deep` |
+| Review someone's GitHub PR (and optionally post comments) | `/rk:pr 123` |
+| Know whether the change does what the spec, ADR or ticket says | `/rk:spec` |
+| Know whether the design is right, not just the lines | `/rk:arch` |
+| Make a file or folder shorter and cleaner, not hunt bugs | `/rk:refine path/` |
+| Understand unfamiliar code (diagrams, reading order), no review | `/rk:explain path/` |
+| Fix the problems the last review found | `/rk:fix` (or "fix 1 and 3") |
+| Run and stress the tests that cover the change | `/rk:test` |
+| Everything before a big merge: deep + arch + refine | `/rk:full` |
+
+Bug finding is `review`, `quick`, `deep` and `pr`. Cleanup is `refine`. Understanding is `explain`.
+
+## Where the results go
+
+- **The report** is printed in the chat.
+- **The HTML walkthrough** (deep, full, pr, arch, explain, or `--html`) and its `findings.json`
+  are kept in your project at `.review-kit/reviews/<run>/`, for example
+  `.review-kit/reviews/pr-12-20261122-014000/review.html` or
+  `.review-kit/reviews/feature-coupons-20261122-014000/review.html`. The path is printed at the
+  end of the report, and `--open` opens it. That folder has its own `.gitignore`, so git never
+  sees it and your `.gitignore` is not touched. Delete old runs whenever you like.
+- **Working files** (the numbered diff, a pinned copy of the reviewed commit, probes) live in a
+  scratch folder under your system temp directory and are deleted after 7 days.
+- **Learnings** ("remember: …") go to `<repo>/.review-kit/learnings.md`, only when you ask.
+  Commit that file if you want your team to share them.
+- **PR comments** are posted only with `/rk:pr … --post`, after you approve them.
+
+## Updating and checking your version
+
+Claude Code installs a copy of the plugin and keeps it per version, so a new commit reaches you
+only when `version` in `.claude-plugin/plugin.json` goes up. Every change to the skill, commands,
+agents or scripts bumps it (CI checks this), and `CHANGELOG.md` says what each version changed.
+
+To get the latest: `/plugin marketplace update review-kit-marketplace`, then start a new session.
+To check what you have: open `/plugin`, go to Installed, and look at the version next to `rk`.
+Every report also shows it on its **Execution** line (`rk v1.4.0`), and the HTML page shows it in
+its footer. If that number is older than the top entry of `CHANGELOG.md`, update.
+
 **Requirements:** `git` and `python3` (the helper scripts use only the standard library and target
 3.9+; CI runs them on 3.12). Recommended: `ruff` on PATH (`pip install ruff`) for a fast static
 pass over added Python lines; without it the review still runs and says ruff is missing. PR mode
@@ -71,7 +118,7 @@ a PR number or URL, or a path.
   risk signals, suggested depth, purpose docs, project rules, learnings, ruff hints, call sites of
   changed Python functions, and the numbered diff (inline up to about 1,500 lines; larger diffs
   are read from a scratch folder, riskiest areas first, and the report lists what was skipped).
-  The command writes nothing in your repo.
+  The context command writes nothing in your repo.
 - **No questions.** It never stops to ask which mode or what the change is for. It infers the
   purpose and says what it used.
 - **Parallel where it pays.** Quick mode is a single inline pass. Deep mode runs its lenses and its
@@ -172,15 +219,16 @@ events that triggers it, root cause, impact, a fix as a diff and a test that fai
 files table in reading order with each file's role and size. Problems fold and unfold, `j` / `k`
 jump between them, the side menu follows your scroll, and there is a light/dark switch. Explain
 mode drops the verdict card and says once, in the facts line, that the code was not checked for
-bugs. The page is self-contained and works offline. It is written to the scratch folder in your
-system temp directory and its path is printed. To preview the layout without a model run:
+bugs. The page is self-contained and works offline. It is kept in `.review-kit/reviews/<run>/` in
+your project and its path is printed. To preview the layout without a model run:
 `python3 evals/build_walkthrough_demo.py /tmp/demo` then render `/tmp/demo/review-pkg`.
 
 **Settings:** `.review-kit/config.json` in the repo or `~/.review-kit/config.json`:
-`{"html": "always" | "never", "open": true, "html_dir": "~/reviews"}`. Leave `html` out for the
+`{"html": "always" | "never", "open": true, "html_dir": "~/reviews" | "temp"}`. Leave `html` out for the
 default (on in the modes above, or with `--html`). `open`
 launches the page in your browser as soon as it is written (`--open` does it once); `html_dir`
-keeps a copy of every page in a folder of your choice (`--html-out <dir>` for one run).
+puts every page in a folder of your choice instead of `.review-kit/reviews/` (`--html-out <dir>`
+for one run), and `"temp"` keeps pages only in the scratch folder.
 
 ## Tested
 

@@ -19,8 +19,12 @@ review before merging. The workflow does not install branch protection or bypass
   seconds and cost in the PR. Speed is a feature: a change that slows reviews needs a recall win.
   A change that finds more without adding noise on the clean branch is an easy yes.
 - **Scripts stay dependency-free.** Python 3.9+ standard library and bash only.
-- **Reviews stay read-only.** Nothing in a review may edit the user's repo, move HEAD or post to
+- **Reviews stay read-only.** Apart from its self-ignored `.review-kit/reviews/` output folder
+  and learnings the user asks for, nothing in a review may edit the user's repo, move HEAD or post to
   GitHub without the user's explicit flag and confirmation.
+- **Bump the version.** Any change under `skills/`, `commands/`, `agents/` or `.claude-plugin/`
+  raises `version` in `.claude-plugin/plugin.json` and adds a `CHANGELOG.md` entry. Installed
+  copies only update on a new version, and CI fails the PR without it.
 - One focused change per PR.
 
 ## Local test

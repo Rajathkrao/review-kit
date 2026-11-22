@@ -108,6 +108,15 @@ def validate_source(meta, package=None):
         raise ValueError("checkout moved since the review")
 
 
+def plugin_version():
+    """Version of the installed copy, so a report shows which review-kit produced it."""
+    try:
+        manifest = Path(__file__).resolve().parents[3] / ".claude-plugin" / "plugin.json"
+        return json.loads(manifest.read_text()).get("version", "unknown")
+    except (OSError, ValueError, IndexError):
+        return "unknown"
+
+
 def scratch_home():
     return Path(os.environ.get("RK_SCRATCH") or Path(tempfile.gettempdir()) / "review-kit")
 
@@ -596,7 +605,7 @@ def main():
     pkg.mkdir(parents=True, exist_ok=True)
     meta = {"repo_root": root, "original_repo_root": root, "repo": Path(root).name,
             "target": target or "(current branch)", "created": stamp, "mode": a.mode,
-            "run_dir": str(pkg), "collection_status": "failed"}
+            "run_dir": str(pkg), "collection_status": "failed", "rk_version": plugin_version()}
     (pkg / "meta.json").write_text(json.dumps(meta, indent=2))
 
     diff, commits, base, head, desc, kind, gh, pr_body, untracked, warnings = resolve(root, target, a.base, pkg, a.whole)
@@ -642,7 +651,7 @@ def main():
          f" · suggested depth: {depth} ({why})",
          f"- Read source from: {src_root} ({source_kind})" + ("" if committed else ", the live checkout"),
          f"- Reviewed commit: {meta['reviewed_commit'][:12]}" + ("" if committed else " + uncommitted changes"),
-         f"- HTML walkthrough default: {cfg.get('html', 'auto')}", "", "## Files"]
+         f"- HTML walkthrough default: {cfg.get('html', 'auto')} · review-kit v{meta['rk_version']}", "", "## Files"]
     L += [f"- {f['status']:8} {f['path']} (+{f['added']}/-{f['deleted']})" for f in files] or ["- none"]
     L += ["", "## Commits", commits or "(none: uncommitted changes only)"]
     if pr_body:

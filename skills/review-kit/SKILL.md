@@ -29,7 +29,7 @@ In Codex, read `references/codex.md` first. Invoke as `$review-kit <mode> [targe
 | `--focus "<text>"` | area to weight heavily | none |
 | `--html` / `--no-html` | write or skip the HTML walkthrough | on in deep, full, pr, arch, explain |
 | `--open` | open the HTML page in the browser when it is written | off (`"open": true` in config) |
-| `--html-out <dir>` | also copy the HTML page into this folder | scratch folder only (`"html_dir"` in config) |
+| `--html-out <dir>` | put the HTML page in this folder instead | `<repo>/.review-kit/reviews/<run>/` (`"html_dir"` in config; `"temp"` = scratch only) |
 | `--second-model` | add an independent review by a different model | off |
 | `--post` | post the review to the PR (pr mode) | off |
 | `--run` | pre-approve running tests and repro scripts | off |
