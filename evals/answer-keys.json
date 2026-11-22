@@ -1021,7 +1021,10 @@
           "after the discount",
           "after discount",
           "discounted subtotal",
-          "post-discount"
+          "post-discount",
+          "discounted total",
+          "discounted amount",
+          "already discounted"
         ],
         "desc": "minimum is compared with the discounted subtotal; spec #3 says before the discount, so eligible carts are refused",
         "anchor": "if order.subtotal - discount < coupon.min_subtotal"
