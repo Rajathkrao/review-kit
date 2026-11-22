@@ -67,37 +67,57 @@ Rules:
 
 ## PR comment format (posted with --post)
 
-Inline comment, one per finding located on a line in the PR diff:
+`scripts/post_review.py` builds both the summary and the inline comments; don't hand-write them.
+The goal is a comment a reviewer can act on in ten seconds: verdict first, one line per issue,
+details folded away.
 
-```markdown
-**Critical:** <title>
+Inline comment, one per critical or important finding on a line in the PR diff (most severe first):
+
+````markdown
+<!-- review-kit F1 -->
+🔴 **Critical** · <title>
 
 <What goes wrong and why, 1–3 sentences.>
 
-**Suggested fix:** <one or two sentences>
+**Fix:** <one or two sentences>
 
 ```suggestion
-<replacement lines, only when the fix is a small, exact replacement of the commented lines>
+<replacement lines; a one-click suggestion only when the comment covers the finding's whole
+line range, otherwise shown as a plain code block "Replacement for lines X-Y">
 ```
 
-<sub>review-kit · confidence 92 · source-verified</sub>
-```
+<details><summary>Evidence</summary> what was read or run · confidence · how it was confirmed </details>
+<details><summary>🤖 Prompt for AI agents</summary> a copyable fix prompt </details>
+````
+
+Minor findings are never posted inline; they go in a folded "🟡 Minor" list in the summary.
 
 Review summary body (submitted as event `COMMENT`, never APPROVE or REQUEST_CHANGES unless the
 user says so):
 
 ```markdown
-### Code review (review-kit)
+<!-- review-kit:summary -->
+## 🟠 Merge after fixes            (🔴 Don't merge yet · ✅ Looks good to merge)
 
-**Verdict:** Ship after fixes — <reason>
+<summary reason, from findings.json>
+
+**Found:** 🔴 1 critical · 🟠 2 important · 🟡 3 minor
 **Checked against:** <contract source>
-**Verification:** <tests run and result, or "not run">
+**Tests:** <tests run and result, or "not run">
 
-Found <n> issues (<c> critical, <i> important). Inline comments below.
-<Findings whose lines are outside the PR diff, listed here with links.>
+| | Issue | Where |
+|---|---|---|
+| 🔴 | <title> | [`path:12-14`](<blob link at head SHA>) · inline / outside the diff |
 
-<sub>Generated with review-kit for Claude Code. React 👍 / 👎 to tell us if this was useful.</sub>
+▸ Outside the lines this PR changed (n)   — full text, fix and link for each
+▸ 🟡 Minor (n)                            — one line each
+▸ Agree with existing comments (n)        — `@author` in code so nobody is pinged
+▸ 🤖 Prompt to fix all with an AI agent
+
+<sub>review-kit v<version> · commit <short sha> · react 👍 or 👎 to say if this helped</sub>
 ```
+
+The `<!-- review-kit … -->` markers are hidden; they let a later run find its own comments.
 
 Replies to existing review threads go in the thread
 (`gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies`), not as top-level comments
